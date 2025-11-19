@@ -2,7 +2,13 @@
 __pycache__/
 *.py[codz]
 *$py.class
-
+.venv
+.vscode
+./6_dynam_models
+6_dynam_models/
+4_drosophila_social_interaction_criteria/.github
+4_drosophila_social_interaction_criteria/src/utils/__pycache__
+5_drosophila_social_network_analysis/src/__pycache__
 # C extensions
 *.so
 

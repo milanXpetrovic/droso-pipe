@@ -1,0 +1,20 @@
+
+docker run --cpus=44 --pids-limit=10 --memory=128g -it --rm --name pipeline -p 8888:8888 --shm-size=32G -v /srv/milky/drosophila-pipeline:/pipeline matlab_fly:r2023b -browser
+dmesg | less
+shift + g
+
+docker run -it --rm --name pipeline -p 8888:8888 --shm-size=32G -v /srv/milky/drosophila-pipeline:/pipeline matlab_fly:r2023b -browser
+
+/srv/milky/drosophila-pipeline/
+
+docker run -it --rm -p 8888:8888 --shm-size=32G --user $(id -u):$(id -g) -v /srv/milky/drosophila-pipeline:/pipeline matlab_fly:r2023b -browser
+
+milan.petrovic@uniri.hr
+matlabSPERMA69
+
+docker build --build-arg ADDITIONAL_PRODUCTS="Image_Processing_Toolbox" -t matlab_toolboxes:r2023a .
+docker build --build-arg ADDITIONAL_PRODUCTS="Image_Processing_Toolbox Signal_Processing_Toolbox Parallel_Computing_Toolbox Statistics_and_Machine_Learning_Toolbox" -t matlab_1030:r2023b .
+
+docker exec -it pipeline bash
+sudo usermod -u 1030 matlab
+docker restart pipeline
