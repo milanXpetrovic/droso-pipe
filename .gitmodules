@@ -1,0 +1,6 @@
+[submodule "tools/interaction-criteria"]
+	path = tools/interaction-criteria
+	url = https://github.com/milanXpetrovic/drosophila-social-interaction-criteria.git
+[submodule "tools/social-network"]
+	path = tools/social-network
+	url = https://github.com/milanXpetrovic/drosophila-social-network-analysis.git

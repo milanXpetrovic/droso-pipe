@@ -9,6 +9,16 @@ __pycache__/
 4_drosophila_social_interaction_criteria/.github
 4_drosophila_social_interaction_criteria/src/utils/__pycache__
 5_drosophila_social_network_analysis/src/__pycache__
+
+.env
+scratch/
+*.avi
+*.mp4
+*.parquet
+*.h5
+*.slp
+*.mat
+
 # C extensions
 *.so
 
