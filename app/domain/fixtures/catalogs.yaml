@@ -1,0 +1,95 @@
+# Seed catalogues. Load with:  python manage.py loaddata catalogs
+# Edit here (and reload) rather than only in the admin, so catalogues stay versioned in git.
+
+- model: domain.genotype
+  pk: 1
+  fields:
+    code: CS
+    name: Canton-S
+    notes: Wild-type reference strain.
+
+- model: domain.manipulationkind
+  pk: 1
+  fields:
+    code: isolation
+    name: Social isolation
+    description: Flies housed individually before recording.
+    param_schema:
+      type: object
+      required: [duration_days]
+      properties:
+        duration_days: {type: number, minimum: 0}
+      additionalProperties: false
+
+- model: domain.manipulationkind
+  pk: 2
+  fields:
+    code: group_housing
+    name: Group housing
+    description: Flies housed in groups before recording (the usual control for isolation).
+    param_schema:
+      type: object
+      required: [duration_days, group_size]
+      properties:
+        duration_days: {type: number, minimum: 0}
+        group_size: {type: integer, minimum: 2}
+      additionalProperties: false
+
+- model: domain.manipulationkind
+  pk: 3
+  fields:
+    code: drug
+    name: Drug exposure
+    description: Substance delivered to the flies, before or during recording.
+    param_schema:
+      type: object
+      required: [substance, dose, dose_unit, delivery]
+      properties:
+        substance: {type: string, minLength: 1}
+        dose: {type: number, minimum: 0}
+        dose_unit: {type: string, enum: [ug, mg, ul, ml, percent]}
+        delivery: {type: string, enum: [vapor, food, injection]}
+        hours_before_recording: {type: number, minimum: 0}
+      additionalProperties: false
+
+- model: domain.eventkind
+  pk: 1
+  fields:
+    code: divider_removed
+    name: Divider removed
+    is_interval: false
+    description: Wall arena divider taken out; the two zones join.
+
+- model: domain.eventkind
+  pk: 2
+  fields:
+    code: vapor_puff
+    name: Vapor puff
+    is_interval: true
+    description: Substance vapor delivered into the arena; link the manipulation that was delivered.
+    param_schema:
+      type: object
+      properties:
+        flow_ml_min: {type: number, minimum: 0}
+      additionalProperties: false
+
+- model: domain.eventkind
+  pk: 3
+  fields:
+    code: light_change
+    name: Light change
+    is_interval: false
+    param_schema:
+      type: object
+      required: [to]
+      properties:
+        to: {type: string, enum: ["on", "off", "red", "ir"]}
+      additionalProperties: false
+
+- model: domain.eventkind
+  pk: 4
+  fields:
+    code: note
+    name: Note
+    is_interval: false
+    description: Anything worth marking in time (disturbance, fly escaped, ...); describe in notes.
