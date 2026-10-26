@@ -91,6 +91,18 @@ class DomainScenarios(TestCase):
         arena.status = Arena.Status.EXCLUDED
         self.assertInvalid(arena, "exclusion_reason")
 
+    def test_arena_windows(self):
+        rec = self.recording(self.grid4, self.c_iso, default_window_start_s=600, default_window_end_s=2100)
+        self.assertEqual([a.window for a in rec.arenas.all()], [(600, 2100)] * 4)
+        a2 = rec.arenas.get(index=2)
+        a2.window_start_s, a2.window_end_s = 720, 2220
+        save(a2)
+        self.assertEqual(rec.arenas.get(index=2).window, (720, 2220))
+        a2.window_end_s = 500
+        self.assertInvalid(a2, "window_end_s")
+        whole = self.recording(self.grid4, self.c_iso).arenas.first()
+        self.assertEqual(whole.window, (0.0, None))
+
     # --- scenario 2: wall arena -----------------------------------------------
 
     def test_wall_arena(self):

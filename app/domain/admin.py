@@ -125,7 +125,8 @@ class CohortAdmin(BaseAdmin):
 class ArenaInline(admin.TabularInline):
     model = m.Arena
     extra = 0
-    fields = ("index", "status", "exclusion_reason", "px_per_mm", "geometry", "fly_group_summary")
+    fields = ("index", "window_start_s", "window_end_s", "status", "exclusion_reason", "px_per_mm", "geometry",
+              "fly_group_summary")
     readonly_fields = ("fly_group_summary",)
     show_change_link = True   # opens the arena with its fly groups
 

@@ -41,6 +41,12 @@ def validate_json(schema: dict, value, field: str):
         raise ValidationError({field: f"{path + ': ' if path else ''}{e.message}"})
 
 
+def check_window(start, end, field: str):
+    """Analysis windows are in seconds from the start of the raw video; end must be after start."""
+    if start is not None and end is not None and end <= start:
+        raise ValidationError({field: "Window end must be after window start."})
+
+
 # ---------------------------------------------------------------------------
 # Base: timestamps, soft delete, history
 # ---------------------------------------------------------------------------
@@ -398,6 +404,10 @@ class Recording(DomainModel):
                                        related_name="+")
     started_at = models.DateTimeField()
     planned_duration_s = models.PositiveIntegerField(null=True, blank=True)
+    default_window_start_s = models.FloatField(
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text="Default analysis window copied to new arenas; seconds from video start (10 min = 600).")
+    default_window_end_s = models.FloatField(null=True, blank=True, validators=[MinValueValidator(0)])
     operator = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                  related_name="+")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PLANNED)
@@ -416,6 +426,7 @@ class Recording(DomainModel):
             raise ValidationError({"default_cohort": "Cohort genotype differs from the condition genotype."})
         if self.status == self.Status.REJECTED and not self.rejection_reason:
             raise ValidationError({"rejection_reason": "Give a reason for rejecting the recording."})
+        check_window(self.default_window_start_s, self.default_window_end_s, "default_window_end_s")
 
     def save(self, *args, **kwargs):
         if self.code:
@@ -438,7 +449,9 @@ class Recording(DomainModel):
         """Create arenas from the layout and one FlyGroup per zone with the default condition and cohort.
         Arenas that already have fly groups are left untouched."""
         for i in range(1, self.layout.n_arenas + 1):
-            arena, _ = Arena.objects.get_or_create(recording=self, index=i)
+            arena, _ = Arena.objects.get_or_create(
+                recording=self, index=i,
+                defaults={"window_start_s": self.default_window_start_s, "window_end_s": self.default_window_end_s})
             if not arena.fly_groups.exists():
                 for zone in self.layout.zones(i):
                     FlyGroup.objects.create(arena=arena, zone=zone, condition=self.default_condition,
@@ -467,6 +480,11 @@ class Arena(DomainModel):
                                 help_text='Pixels in this video: {"circle": [cx, cy, r]}, '
                                           '{"bbox": [x, y, w, h]} or {"polygon": [[x, y], ...]}.')
     px_per_mm = models.FloatField(null=True, blank=True)
+    window_start_s = models.FloatField(
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text="Part of the video used for this arena; seconds from video start. Empty = from the start.")
+    window_end_s = models.FloatField(null=True, blank=True, validators=[MinValueValidator(0)],
+                                     help_text="Empty = to the end of the video.")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.OK)
     exclusion_reason = models.TextField(blank=True)
 
@@ -486,6 +504,12 @@ class Arena(DomainModel):
             raise ValidationError({"index": f"Layout has only {self.recording.layout.n_arenas} arenas."})
         if self.status == self.Status.EXCLUDED and not self.exclusion_reason:
             raise ValidationError({"exclusion_reason": "Give a reason for excluding the arena."})
+        check_window(self.window_start_s, self.window_end_s, "window_end_s")
+
+    @property
+    def window(self) -> tuple[float, float | None]:
+        """(start_s, end_s) in raw-video time; end None = to the end of the video."""
+        return (self.window_start_s or 0.0, self.window_end_s)
 
 
 class FlyGroup(DomainModel):
