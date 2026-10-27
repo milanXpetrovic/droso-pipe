@@ -4,17 +4,17 @@
 
 - model: domain.rig
   pk: 1
-  fields: {code: R1, notes: "Windows PC, RTX 4090"}
+  fields: {code: R1, incoming_dir: rig1, notes: "Windows PC, RTX 4090"}
 - model: domain.rig
   pk: 2
-  fields: {code: R2}
+  fields: {code: R2, incoming_dir: rig2}
 
 - model: domain.camera
   pk: 1
-  fields: {code: "1", model: Basler acA3800-10gm, serial: ""}
+  fields: {code: "1", model: acA4024-29um, serial: "", usual_rig: 1}
 - model: domain.camera
   pk: 2
-  fields: {code: "2", model: Basler acA3800-10gm, serial: ""}
+  fields: {code: "2", model: acA4024-29um, serial: "", usual_rig: 2}
 
 # TODO: set arena_diameter_mm to the real value
 - model: domain.arenalayout

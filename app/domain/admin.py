@@ -29,12 +29,12 @@ class ProtocolAdmin(BaseAdmin):
 
 @admin.register(m.Rig)
 class RigAdmin(BaseAdmin):
-    list_display = ("code",)
+    list_display = ("code", "incoming_dir")
 
 
 @admin.register(m.Camera)
 class CameraAdmin(BaseAdmin):
-    list_display = ("code", "model", "serial")
+    list_display = ("code", "model", "serial", "usual_rig")
 
 
 @admin.register(m.ArenaLayout)

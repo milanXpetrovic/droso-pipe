@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Droso inbox{% endblock %}</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#2c2c2a; --muted:#6b6a65; --line:#dcdad3; --accent:#0f6e56;
+          --warn-bg:#faeeda; --warn:#7a4a0b; --ok-bg:#e1f5ee; --err-bg:#fcebeb; --err:#8a2a2a; color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1e1e1c; --card:#2a2a28; --ink:#e6e4dc; --muted:#a3a198; --line:#44433f; --accent:#5dcaa5;
+            --warn-bg:#4a3510; --warn:#f3d19a; --ok-bg:#163d31; --err-bg:#4a1d1d; --err:#f2b3b3; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; gap:1.5rem; align-items:center; padding:.8rem 1.5rem; background:var(--card); border-bottom:1px solid var(--line); }
+  header a { color:var(--ink); text-decoration:none; font-weight:600; }
+  header .spacer { flex:1; } header .user { color:var(--muted); font-weight:400; }
+  main { max-width:1100px; margin:1.5rem auto; padding:0 1.5rem; }
+  h1 { font-size:1.4rem; margin:0 0 1rem; } h2 { font-size:1.05rem; margin:1.5rem 0 .6rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:1rem 1.2rem; margin-bottom:1rem; }
+  table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:.5rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:.85rem; }
+  .muted { color:var(--muted); } .mono { font-family: ui-monospace, Consolas, monospace; font-size:.9rem; }
+  .btn { display:inline-block; padding:.45rem .9rem; border-radius:6px; border:1px solid var(--accent); background:var(--accent);
+         color:#fff; text-decoration:none; font-weight:600; cursor:pointer; font-size:.9rem; }
+  .btn.secondary { background:transparent; color:var(--ink); border-color:var(--line); }
+  .msg { padding:.6rem .9rem; border-radius:6px; margin-bottom:.6rem; background:var(--ok-bg); }
+  .msg.warning { background:var(--warn-bg); color:var(--warn); } .msg.error { background:var(--err-bg); color:var(--err); }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:.8rem 1.2rem; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin-bottom:.2rem; }
+  input, select, textarea { width:100%; padding:.45rem .5rem; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); font:inherit; }
+  input[disabled], select[disabled] { opacity:.75; }
+  .errorlist { color:var(--err); margin:.2rem 0 0; padding-left:1rem; font-size:.85rem; }
+  .help { font-size:.8rem; color:var(--muted); }
+  .arena-grid { display:grid; gap:.8rem; } .arena { border:1px solid var(--line); border-radius:8px; padding:.7rem; }
+  .arena h3 { margin:0 0 .5rem; font-size:.95rem; }
+  .badge { white-space:nowrap; font-size:.75rem; padding:.1rem .45rem; border-radius:999px; background:var(--warn-bg); color:var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <a href="{% url 'intake:inbox' %}">Inbox</a>
+  <a href="{% url 'admin:index' %}">Admin</a>
+  <span class="spacer"></span>
+  <span class="user">{{ request.user.get_username }}</span>
+</header>
+<main>
+  {% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

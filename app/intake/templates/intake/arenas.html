@@ -1,0 +1,42 @@
+{% extends "intake/base.html" %}
+{% block content %}
+<h1>Arenas of <span class="mono">{{ recording.code }}</span></h1>
+<p class="muted">{{ recording.layout }} · {{ recording.condition }} · {{ recording.get_sex_display }}{% if recording.n_flies %} · {{ recording.n_flies }} flies per arena{% endif %}</p>
+<form method="post">
+  {% csrf_token %}
+  {{ arena_fs.management_form }}{{ group_fs.management_form }}
+  {{ arena_fs.non_form_errors }}{{ group_fs.non_form_errors }}
+  <div class="card">
+    <h2 style="margin-top:0">Arena validity and windows (as seen by the camera)</h2>
+    <div class="arena-grid" style="grid-template-columns: repeat({{ recording.layout.cols }}, 1fr)">
+      {% for row in grid %}{% for f in row %}
+      <div class="arena">
+        <h3>A{{ f.instance.index|stringformat:"02d" }}</h3>
+        {{ f.id }}
+        <label>Status</label>{{ f.status }}
+        <label style="margin-top:.4rem">Reason</label>{{ f.exclusion_reason }}
+        <div class="grid" style="grid-template-columns:1fr 1fr; gap:.4rem; margin-top:.4rem">
+          <div><label>Window start s</label>{{ f.window_start_s }}</div>
+          <div><label>Window end s</label>{{ f.window_end_s }}</div>
+        </div>
+        {{ f.errors }}
+      </div>
+      {% endfor %}{% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Flies per arena{% if recording.layout.zones %} and side{% endif %}</h2>
+    <p class="help">Change only arenas or sides that differ from the recording defaults.</p>
+    <table>
+      <tr><th>Arena</th><th>Zone</th><th>Condition</th><th>Sex</th><th>Flies</th></tr>
+      {% for f in group_fs.forms %}
+      <tr><td class="mono">A{{ f.instance.arena.index|stringformat:"02d" }}</td><td>{{ f.instance.zone }}</td>
+          <td>{{ f.id }}{{ f.condition }}{{ f.condition.errors }}</td><td>{{ f.sex }}</td><td>{{ f.n_flies }}</td></tr>
+      {% if f.non_field_errors %}<tr><td colspan="5">{{ f.non_field_errors }}</td></tr>{% endif %}
+      {% endfor %}
+    </table>
+  </div>
+  <button class="btn" type="submit">Save</button>
+  <a class="btn secondary" href="{% url 'intake:inbox' %}">Back to inbox</a>
+</form>
+{% endblock %}

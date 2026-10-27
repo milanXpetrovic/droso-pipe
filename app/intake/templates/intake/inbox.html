@@ -1,0 +1,44 @@
+{% extends "intake/base.html" %}
+{% block content %}
+<h1>New videos</h1>
+<div class="card">
+{% if pending %}
+<table>
+  <tr><th>Rig</th><th>File</th><th>Camera</th><th>Started</th><th>Size</th><th></th></tr>
+  {% for v in pending %}
+  <tr>
+    <td>{{ v.rig }}</td>
+    <td class="mono">{{ v.file_name }}</td>
+    <td>{% if v.known_camera %}{{ v.known_camera }}{% elif v.camera_serial %}<span class="badge">new camera {{ v.camera_serial }}</span>{% else %}<span class="muted">?</span>{% endif %}</td>
+    <td>{% if v.started_at %}{{ v.started_at|date:"d.m.Y H:i:s" }}{% else %}<span class="muted">not in name</span>{% endif %}</td>
+    <td>{{ v.size_bytes|filesizeformat }}</td>
+    <td style="white-space:nowrap">
+      {% if v.ready %}
+        <a class="btn" href="{% url 'intake:register' v.pk %}">Enter metadata</a>
+        <form method="post" action="{% url 'intake:ignore' v.pk %}" style="display:inline" onsubmit="return confirm('Ignore this file?')">
+          {% csrf_token %}<button class="btn secondary" type="submit">Ignore</button>
+        </form>
+      {% else %}<span class="muted">copying…</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No new videos in incoming/. Copy a video into incoming/&lt;rig&gt;/ and reload.</p>
+{% endif %}
+</div>
+
+<h2>Recently registered</h2>
+<div class="card">
+{% if done %}
+<table>
+  <tr><th>Recording</th><th>Rig</th><th>File</th><th>Status</th><th></th></tr>
+  {% for v in done %}
+  <tr><td class="mono">{{ v.recording.code }}</td><td>{{ v.rig }}</td><td class="mono">{{ v.file_name }}</td>
+      <td>{{ v.get_status_display }}</td>
+      <td><a href="{% url 'intake:arenas' v.recording.code %}">arenas</a></td></tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Nothing yet.</p>{% endif %}
+</div>
+{% endblock %}

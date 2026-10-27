@@ -1,0 +1,11 @@
+{% extends "intake/base.html" %}
+{% block content %}
+<h1>Unknown camera</h1>
+<div class="card">
+  <p>The file <span class="mono">{{ video.file_name }}</span> was recorded with camera
+     <b>{{ video.camera_model }}</b>, serial <b class="mono">{{ video.camera_serial }}</b>, which is not in the database yet.</p>
+  <p>Add it once (an administrator can do this), then come back to this video.</p>
+  <a class="btn" href="{{ add_url }}">Add camera</a>
+  <a class="btn secondary" href="{% url 'intake:inbox' %}">Back to inbox</a>
+</div>
+{% endblock %}

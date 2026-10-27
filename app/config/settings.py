@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "simple_history",
     "domain",
+    "intake",
 ]
 
 MIDDLEWARE = [
@@ -111,6 +112,13 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Video storage root: incoming/, raw/, derived/ ... live under it.
+# Developer default is a local folder; on the NAS it is the mounted /mnt/lab/videos.
+VIDEOS_ROOT = Path(env("DROSO_VIDEOS_ROOT", str(BASE_DIR / "sim-videos")))
+INCOMING_STABLE_SECONDS = int(env("DROSO_INCOMING_STABLE_SECONDS", "60"))   # unchanged this long = copy finished
+
+LOGIN_URL = "/admin/login/"
 
 LOGGING = {
     "version": 1,

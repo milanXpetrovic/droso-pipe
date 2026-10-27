@@ -131,6 +131,8 @@ class Protocol(DomainModel):
 
 class Rig(DomainModel):
     code = models.CharField(max_length=16, unique=True, validators=[CODE])   # "R1"
+    incoming_dir = models.CharField(max_length=32, blank=True, validators=[CODE],
+                                    help_text='Folder under incoming/ where this rig drops videos, e.g. "rig1".')
     notes = models.TextField(blank=True)
 
     class Meta:
@@ -142,12 +144,16 @@ class Rig(DomainModel):
 
 class Camera(DomainModel):
     code = models.CharField(max_length=16, unique=True, validators=[CODE])   # "1", "2"
-    model = models.CharField(max_length=128, blank=True)                    # "Basler acA3800-10gm"
-    serial = models.CharField(max_length=64, blank=True)
+    model = models.CharField(max_length=128, blank=True)                    # "acA4024-29um"
+    serial = models.CharField(max_length=64, blank=True, help_text="Read from video file names.")
+    usual_rig = models.ForeignKey(Rig, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+                                  help_text="Where this camera normally sits; a mismatch triggers a warning.")
     notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["code"]
+        constraints = [models.UniqueConstraint(fields=["serial"], condition=~models.Q(serial=""),
+                                               name="unique_camera_serial")]
 
     def __str__(self):
         return self.code

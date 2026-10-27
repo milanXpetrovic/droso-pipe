@@ -1,0 +1,35 @@
+{% extends "intake/base.html" %}
+{% block content %}
+<h1>Metadata for a new video</h1>
+<div class="card">
+  <div class="grid">
+    <div><label>File</label><div class="mono">{{ video.file_name }}</div></div>
+    <div><label>Rig</label>{{ video.rig }}</div>
+    <div><label>Camera</label>{{ video.camera_model|default:"?" }} {% if video.camera_serial %}({{ video.camera_serial }}){% endif %}</div>
+    <div><label>Started</label>{% if video.started_at %}{{ video.started_at|date:"d.m.Y H:i:s" }}{% else %}enter below{% endif %}</div>
+    <div><label>Size</label>{{ video.size_bytes|filesizeformat }}</div>
+  </div>
+</div>
+{% for w in warnings %}<div class="msg warning">{{ w }}</div>{% endfor %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for title, fields in form.grouped %}
+  <div class="card">
+    <h2 style="margin-top:0">{{ title }}</h2>
+    <div class="grid">
+      {% for f in fields %}
+      <div>
+        <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}</label>
+        {{ f }}
+        {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+        {{ f.errors }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  <button class="btn" type="submit">Save and check arenas</button>
+  <a class="btn secondary" href="{% url 'intake:inbox' %}">Cancel</a>
+</form>
+{% endblock %}

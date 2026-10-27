@@ -23,24 +23,27 @@ services:
       retries: 10
 
   app:
-    image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.1.0
+    image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.2.0
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     user: "3002:3003"                       # pipeline
+    group_add: ["3000", "3001", "3002"]     # lab, labdata, worker: read incoming/ and staging/
     environment:
       DJANGO_DEBUG: "0"
       DJANGO_SECRET_KEY: CHANGE_ME_LONG_RANDOM_STRING
       DJANGO_ALLOWED_HOSTS: 10.11.48.18,lab-nas,lab-nas.local
       DJANGO_CSRF_TRUSTED_ORIGINS: http://10.11.48.18:8080,http://lab-nas:8080,http://lab-nas.local:8080
       DJANGO_MEDIA_ROOT: /data/media
+      DROSO_VIDEOS_ROOT: /data/videos
       POSTGRES_DB: droso
       POSTGRES_USER: droso
       POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
       POSTGRES_HOST: db
     volumes:
       - /mnt/lab/apps/media:/data/media
+      - /mnt/lab/videos:/data/videos
     ports:
       - "8080:8000"
 
