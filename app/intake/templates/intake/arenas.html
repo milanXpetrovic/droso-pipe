@@ -3,6 +3,16 @@
 {% block content %}
 <h1>Arenas of <span class="mono">{{ recording.code }}</span></h1>
 <p class="muted">{{ recording.layout }} · {{ recording.condition }} · {{ recording.get_sex_display }}{% if recording.n_flies %} · {{ recording.n_flies }} flies per arena{% endif %}{% if duration %} · video {{ duration|hms }}{% endif %}{% if preview_video.fps %} at {{ preview_video.fps|floatformat:"-2" }} fps{% endif %}{% if protocol_duration %} · protocol {{ protocol_duration|hms }}{% endif %}</p>
+{% if raw %}
+<div class="card">
+  <div class="grid">
+    <div><label>Raw video</label><span class="mono">{{ raw.rel_path }}</span></div>
+    <div><label>Frames</label>{{ raw.meta.n_frames }} ({{ raw.meta.measured_fps|floatformat:"3" }} fps measured)</div>
+    <div><label>SHA-256</label><span class="mono">{{ raw.sha256|truncatechars:17 }}</span></div>
+  </div>
+  {% for w in raw.warnings %}<div class="msg warning" style="margin:.6rem 0 0">{{ w }}</div>{% endfor %}
+</div>
+{% endif %}
 {% if preview_video %}{% with layout=recording.layout %}{% include "intake/_preview.html" %}{% endwith %}{% endif %}
 <form method="post">
   {% csrf_token %}

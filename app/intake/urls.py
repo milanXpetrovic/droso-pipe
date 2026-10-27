@@ -8,5 +8,6 @@ urlpatterns = [
     path("video/<int:pk>/", views.register, name="register"),
     path("video/<int:pk>/ignore/", views.ignore, name="ignore"),
     path("video/<int:pk>/frame.jpg", views.frame, name="frame"),
+    path("video/<int:pk>/retry/", views.retry_ingest, name="retry"),
     path("recording/<str:code>/arenas/", views.arenas, name="arenas"),
 ]

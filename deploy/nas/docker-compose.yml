@@ -1,10 +1,22 @@
-# droso-pipe app on TrueNAS: Apps -> Discover -> (menu) -> Install via YAML.
-# Replace every CHANGE_ME before installing. Do NOT commit real passwords to git.
-#
-# Folders (create first, see deploy/nas/README.md):
-#   /mnt/lab/apps/postgres   database files
-#   /mnt/lab/apps/media      uploaded files          (owner pipeline, 3002:3003)
-#   /mnt/lab/apps/backups    nightly database dumps
+# droso-pipe on TrueNAS: Apps -> droso -> Edit (or Install via YAML for a new install).
+# Replace every CHANGE_ME. The DB password must stay the same as the one the database was created with.
+
+x-django: &django
+  image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.7.0
+  restart: unless-stopped
+  user: "3002:3003"                         # pipeline
+  group_add: ["3000", "3001", "3002"]       # lab, labdata, worker
+  environment: &django-env
+    DJANGO_DEBUG: "0"
+    DJANGO_SECRET_KEY: CHANGE_ME_LONG_RANDOM_STRING
+    DJANGO_ALLOWED_HOSTS: 10.11.48.18,lab-nas,lab-nas.local
+    DJANGO_CSRF_TRUSTED_ORIGINS: http://10.11.48.18:8080,http://lab-nas:8080,http://lab-nas.local:8080
+    DJANGO_MEDIA_ROOT: /data/media
+    DROSO_VIDEOS_ROOT: /data/videos
+    POSTGRES_DB: droso
+    POSTGRES_USER: droso
+    POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
+    POSTGRES_HOST: db
 
 services:
   db:
@@ -23,29 +35,24 @@ services:
       retries: 10
 
   app:
-    image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.2.0
-    restart: unless-stopped
+    <<: *django
     depends_on:
       db:
         condition: service_healthy
-    user: "3002:3003"                       # pipeline
-    group_add: ["3000", "3001", "3002"]     # lab, labdata, worker: read incoming/ and staging/
-    environment:
-      DJANGO_DEBUG: "0"
-      DJANGO_SECRET_KEY: CHANGE_ME_LONG_RANDOM_STRING
-      DJANGO_ALLOWED_HOSTS: 10.11.48.18,lab-nas,lab-nas.local
-      DJANGO_CSRF_TRUSTED_ORIGINS: http://10.11.48.18:8080,http://lab-nas:8080,http://lab-nas.local:8080
-      DJANGO_MEDIA_ROOT: /data/media
-      DROSO_VIDEOS_ROOT: /data/videos
-      POSTGRES_DB: droso
-      POSTGRES_USER: droso
-      POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
-      POSTGRES_HOST: db
     volumes:
       - /mnt/lab/apps/media:/data/media
       - /mnt/lab/videos:/data/videos
     ports:
       - "8080:8000"
+
+  ingest:                                   # copies registered videos from incoming/ to raw/
+    <<: *django
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["python", "manage.py", "ingest", "--loop"]
+    volumes:
+      - /mnt/lab/videos:/data/videos
 
   backup:
     image: postgres:16-alpine
@@ -57,7 +64,6 @@ services:
       PGPASSWORD: CHANGE_ME_DB_PASSWORD
     volumes:
       - /mnt/lab/apps/backups:/backups
-    # one compressed dump per day, kept for 30 days
     entrypoint: >
       sh -c 'while true; do
                pg_dump -h db -U droso -Fc droso > /backups/droso-$$(date +%F).dump.tmp &&

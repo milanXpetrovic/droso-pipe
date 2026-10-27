@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "simple_history",
     "domain",
     "intake",
+    "core",
 ]
 
 MIDDLEWARE = [

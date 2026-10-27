@@ -10,7 +10,8 @@ class IncomingVideo(models.Model):
 
     class Status(models.TextChoices):
         NEW = "new", "Waiting for metadata"
-        REGISTERED = "registered", "Registered"
+        REGISTERED = "registered", "Waiting for ingest"
+        INGESTING = "ingesting", "Ingesting"
         INGESTED = "ingested", "Ingested"
         IGNORED = "ignored", "Ignored"
         MISSING = "missing", "File disappeared"
@@ -38,6 +39,8 @@ class IncomingVideo(models.Model):
     recording = models.OneToOneField(Recording, null=True, blank=True, on_delete=models.PROTECT,
                                      related_name="incoming_video")
     ignore_reason = models.TextField(blank=True)
+    ingest_attempts = models.PositiveSmallIntegerField(default=0)
+    ingest_error = models.TextField(blank=True)
 
     class Meta:
         ordering = ["-first_seen_at"]
@@ -49,12 +52,20 @@ class IncomingVideo(models.Model):
         now = now or timezone.now()
         return (now - self.changed_at).total_seconds() >= settings.INCOMING_STABLE_SECONDS
 
+    def current_rel_path(self) -> str:
+        """Where the video is now: in raw/ once ingested, otherwise still in incoming/."""
+        if self.status == self.Status.INGESTED and self.recording_id:
+            raw = self.recording.assets.filter(type__code="raw_video").first()
+            if raw:
+                return raw.rel_path
+        return self.rel_path
+
     def ensure_probe(self) -> None:
         """Read duration, fps, resolution and codec once; cached on the row."""
         if self.duration_s is not None:
             return
         from .preview import probe, video_path
-        info = probe(video_path(self.rel_path))
+        info = probe(video_path(self.current_rel_path()))
         if info["duration_s"] is None:
             return
         for field, value in info.items():

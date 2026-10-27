@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 from domain.models import Arena, FlyGroup, Protocol, Recording
 
 from .forms import ArenaFormSet, FlyGroupFormSet, RegisterForm
+from .ingest import MAX_ATTEMPTS
 from .models import IncomingVideo
 from .preview import frame_jpeg, video_path
 from .scanner import scan
@@ -55,8 +56,12 @@ def inbox(request):
                 v.ensure_duration()          # read once, then cached on the row
             except (OSError, ValueError):
                 pass
-    done = (IncomingVideo.objects.filter(status__in=[IncomingVideo.Status.REGISTERED, IncomingVideo.Status.INGESTED])
-            .select_related("rig", "recording")[:20])
+    S = IncomingVideo.Status
+    done = list(IncomingVideo.objects.filter(status__in=[S.REGISTERED, S.INGESTING, S.INGESTED])
+                .select_related("rig", "recording").order_by("-first_seen_at")[:30])
+    for v in done:
+        v.raw = v.recording.assets.filter(type__code="raw_video").first() if v.status == S.INGESTED else None
+        v.gave_up = v.status == S.REGISTERED and v.ingest_attempts >= MAX_ATTEMPTS
     return render(request, "intake/inbox.html", {"pending": pending, "done": done})
 
 
@@ -138,8 +143,9 @@ def arenas(request, code):
     for form in arena_fs.forms:
         r, c = layout.position(form.instance.index)
         grid[r - 1][c - 1] = form
+    raw = recording.assets.filter(type__code="raw_video").first()
     return render(request, "intake/arenas.html",
-                  {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid,
+                  {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid, "raw": raw,
                    "protocol_duration": recording.protocol.duration_s if recording.protocol else None, **preview})
 
 
@@ -156,7 +162,7 @@ def frame(request, pk):
         t = random.uniform(0.05, 0.95) * duration
     t = round(min(max(t, 0.0), max(duration - 0.5, 0.0)), 1)
     cache = Path(settings.MEDIA_ROOT) / "previews" / str(video.pk)
-    path = frame_jpeg(video_path(video.rel_path), t, cache)
+    path = frame_jpeg(video_path(video.current_rel_path()), t, cache)
     response = FileResponse(open(path, "rb"), content_type="image/jpeg")
     response["Cache-Control"] = "private, max-age=86400"
     return response
@@ -170,4 +176,14 @@ def ignore(request, pk):
     video.ignore_reason = request.POST.get("reason", "").strip()
     video.save(update_fields=["status", "ignore_reason"])
     messages.info(request, f"{video.file_name} ignored.")
+    return redirect("intake:inbox")
+
+
+@operator_view
+@require_POST
+def retry_ingest(request, pk):
+    video = get_object_or_404(IncomingVideo, pk=pk, status=IncomingVideo.Status.REGISTERED)
+    video.ingest_attempts, video.ingest_error = 0, ""
+    video.save(update_fields=["ingest_attempts", "ingest_error"])
+    messages.info(request, f"{video.file_name} will be ingested again.")
     return redirect("intake:inbox")

@@ -316,3 +316,102 @@ class LengthTests(PreviewBase):
         self.assertIn('id="protocol-durations"', html)
         self.assertIn(f'"{p.pk}": 5', html)
         self.assertIn('data-win="last"', html)
+
+
+class IngestTests(PreviewBase):
+    """End to end: registered video in incoming/ -> raw_video asset in raw/."""
+
+    def registered(self, **kw):
+        v = self.make_video(**kw)
+        self.post_form(v)
+        v.refresh_from_db()
+        return v
+
+    def test_ingest_moves_verifies_and_registers(self):
+        import json
+        import stat
+        from core.models import Asset, Run
+        from .ingest import ingest_pending, sha256_of
+        v = self.registered()
+        src = self.root / v.rel_path
+        src_sha = sha256_of(src)
+        self.assertEqual(ingest_pending(), 1)
+
+        v.refresh_from_db()
+        self.assertEqual(v.status, IncomingVideo.Status.INGESTED)
+        self.assertFalse(src.exists())                                        # removed from incoming/
+        asset = Asset.objects.get()
+        self.assertEqual(asset.rel_path, "raw/2026/02/R1-20260203-001/video.mp4")
+        dest = self.root / asset.rel_path
+        self.assertEqual((asset.sha256, sha256_of(dest)), (src_sha, src_sha))    # identical copy
+        self.assertFalse(dest.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))   # read-only
+        self.assertEqual((asset.meta["n_frames"], asset.meta["fps"]), (60, 10.0))
+        self.assertEqual(asset.warnings, [])
+        self.assertEqual((asset.produced_by.tool.code, asset.produced_by.status), ("ingest", Run.Status.DONE))
+
+        sidecar = json.loads((dest.parent / "recording.json").read_text())
+        self.assertEqual((sidecar["code"], len(sidecar["arenas"])), ("R1-20260203-001", 4))
+        manifest = json.loads((dest.parent / "manifest.json").read_text())
+        self.assertEqual(manifest["asset"]["sha256"], src_sha)
+        self.assertFalse(list(dest.parent.glob(".*.part")))                  # no leftovers
+
+        # the frame preview now reads from raw/
+        r = self.client.get(reverse("intake:frame", args=[v.pk]) + "?t=1")
+        self.assertEqual(r["Content-Type"], "image/jpeg")
+        self.assertContains(self.client.get(reverse("intake:inbox")), "60 frames")
+
+    def test_frame_mismatch_becomes_a_warning(self):
+        from unittest import mock
+        from core.models import Asset
+        from .ingest import ingest_pending
+        self.registered()
+        with mock.patch("intake.ingest.count_frames", return_value=55):
+            ingest_pending()
+        self.assertIn("dropped", Asset.objects.get().warnings[0])
+
+    def test_broken_video_is_kept_and_reported(self):
+        from core.models import Asset, Run
+        from .ingest import MAX_ATTEMPTS, ingest_pending
+        v = self.ready_video()                                               # zeros, not a video
+        self.post_form(v, camera=Camera.objects.get(code="1").pk)
+        v.refresh_from_db()
+        for _ in range(MAX_ATTEMPTS + 1):
+            ingest_pending()
+        v.refresh_from_db()
+        self.assertEqual((v.status, v.ingest_attempts), (IncomingVideo.Status.REGISTERED, MAX_ATTEMPTS))
+        self.assertIn("Not a valid video", v.ingest_error)
+        self.assertTrue((self.root / v.rel_path).exists())                    # source untouched
+        self.assertFalse(Asset.objects.exists())
+        self.assertFalse(list((self.root / "raw").rglob("*.mp4")))           # nothing left in raw/
+        self.assertEqual(Run.objects.filter(status=Run.Status.FAILED).count(), MAX_ATTEMPTS)
+        self.assertContains(self.client.get(reverse("intake:inbox")), "Try again")
+        self.client.post(reverse("intake:retry", args=[v.pk]))
+        v.refresh_from_db()
+        self.assertEqual(v.ingest_attempts, 0)
+
+    def test_existing_raw_file_is_never_overwritten(self):
+        from .ingest import ingest_pending
+        v = self.registered()
+        existing = self.root / "raw/2026/02/R1-20260203-001/video.mp4"
+        existing.parent.mkdir(parents=True)
+        existing.write_bytes(b"precious")
+        ingest_pending()
+        v.refresh_from_db()
+        self.assertIn("never overwritten", v.ingest_error)
+        self.assertEqual(existing.read_bytes(), b"precious")
+
+    def test_interrupted_ingest_is_requeued(self):
+        from .ingest import recover_interrupted
+        v = self.registered()
+        IncomingVideo.objects.filter(pk=v.pk).update(status=IncomingVideo.Status.INGESTING)
+        recover_interrupted()
+        v.refresh_from_db()
+        self.assertEqual(v.status, IncomingVideo.Status.REGISTERED)
+
+    def test_command_runs_once(self):
+        from django.core.management import call_command
+        from io import StringIO
+        self.registered()
+        out = StringIO()
+        call_command("ingest", stdout=out)
+        self.assertIn("Ingested 1", out.getvalue())

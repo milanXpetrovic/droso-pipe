@@ -62,3 +62,14 @@ def frame_jpeg(path: Path, t: float, cache_dir: Path, width: int = 1600) -> Path
                    check=True, timeout=120)
     tmp.replace(out)
     return out
+
+
+def count_frames(path: Path) -> int | None:
+    """Count video frames without decoding: framecrc writes one line per packet of the video stream.
+    Reads the whole file once (a few minutes for 30 GB on the NAS); output is streamed, not stored."""
+    proc = subprocess.Popen([FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(path),
+                             "-map", "0:v:0", "-c", "copy", "-f", "framecrc", "-"],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    n = sum(1 for line in proc.stdout if not line.startswith(b"#"))
+    proc.stdout.close()
+    return n if proc.wait(timeout=60) == 0 and n > 0 else None

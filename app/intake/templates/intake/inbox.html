@@ -31,14 +31,23 @@
 {% endif %}
 </div>
 
-<h2>Recently registered</h2>
+<h2>Registered</h2>
 <div class="card">
 {% if done %}
 <table>
-  <tr><th>Recording</th><th>Rig</th><th>File</th><th>Status</th><th></th></tr>
+  <tr><th>Recording</th><th>Rig</th><th>File</th><th>Storage</th><th></th></tr>
   {% for v in done %}
   <tr><td class="mono">{{ v.recording.code }}</td><td>{{ v.rig }}</td><td class="mono">{{ v.file_name }}</td>
-      <td>{{ v.get_status_display }}</td>
+      <td>
+        {% if v.status == "ingested" %}
+          in raw/ · {{ v.raw.meta.n_frames }} frames
+          {% if v.raw.warnings %}<div class="msg warning" style="margin:.3rem 0 0">{{ v.raw.warnings|join:" " }}</div>{% endif %}
+        {% elif v.status == "ingesting" %}<span class="badge">copying to raw/…</span>
+        {% elif v.ingest_error %}
+          <div class="msg error" style="margin:0">{% if v.gave_up %}Stopped after {{ v.ingest_attempts }} attempts: {% else %}Attempt {{ v.ingest_attempts }} failed, will retry: {% endif %}{{ v.ingest_error }}</div>
+          {% if v.gave_up %}<form method="post" action="{% url 'intake:retry' v.pk %}" style="margin-top:.3rem">{% csrf_token %}<button class="btn secondary" type="submit">Try again</button></form>{% endif %}
+        {% else %}<span class="muted">waiting for ingest</span>{% endif %}
+      </td>
       <td><a href="{% url 'intake:arenas' v.recording.code %}">arenas</a></td></tr>
   {% endfor %}
 </table>
