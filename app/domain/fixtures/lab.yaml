@@ -1,0 +1,40 @@
+# Lab setup: rigs, cameras, arena layouts, conditions.
+# Load after catalogs:  python manage.py loaddata catalogs lab
+# loaddata skips model validation; tests.LabFixture checks every object.
+
+- model: domain.rig
+  pk: 1
+  fields: {code: R1, notes: "Windows PC, RTX 4090"}
+- model: domain.rig
+  pk: 2
+  fields: {code: R2}
+
+- model: domain.camera
+  pk: 1
+  fields: {code: "1", model: Basler acA3800-10gm, serial: ""}
+- model: domain.camera
+  pk: 2
+  fields: {code: "2", model: Basler acA3800-10gm, serial: ""}
+
+# TODO: set arena_diameter_mm to the real value
+- model: domain.arenalayout
+  pk: 1
+  fields: {code: 2x2, rows: 2, cols: 2, arena_diameter_mm: null}
+- model: domain.arenalayout
+  pk: 2
+  fields: {code: 3x4, rows: 3, cols: 4, arena_diameter_mm: null}
+# TODO: replace 20/40 with the real size of each half in mm
+- model: domain.arenalayout
+  pk: 3
+  fields:
+    code: wall-2x2
+    rows: 2
+    cols: 2
+    arena_diameter_mm: null
+    zones:
+      left:  [[0, 0], [20, 0], [20, 40], [0, 40]]
+      right: [[20, 0], [40, 0], [40, 40], [20, 40]]
+
+- model: domain.condition
+  pk: 1
+  fields: {code: Control, genotype: 1, description: "Group-housed control"}

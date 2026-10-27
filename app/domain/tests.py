@@ -1,14 +1,15 @@
-"""Domain model scenarios. Run: python manage.py test domain"""
+"""Domain scenarios. Run: python manage.py test domain"""
 
 import datetime as dt
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from .models import (Arena, ArenaLayout, Camera, Cohort, Condition, DamChannel, DamMonitor, DamRun, Event,
-                     EventKind, Experiment, FlyGroup, Genotype, Manipulation, ManipulationKind, Recording, Rig)
+from .models import (Arena, ArenaLayout, Camera, Condition, Event, EventKind, Experiment, FlyGroup, Genotype,
+                     Recording, Rig)
 
 T0 = dt.datetime(2026, 10, 22, 9, 30, tzinfo=dt.timezone.utc)
+def HALF(x0): return [[x0, 0], [x0 + 20, 0], [x0 + 20, 40], [x0, 40]]
 
 
 def save(obj):
@@ -17,41 +18,23 @@ def save(obj):
     return obj
 
 
-class DomainScenarios(TestCase):
+class Scenarios(TestCase):
     fixtures = ["catalogs"]
 
     @classmethod
     def setUpTestData(cls):
-        cls.CS = Genotype.objects.get(code="CS")
-        kind = {k.code: k for k in ManipulationKind.objects.all()}
-        cls.rig = save(Rig(code="R1"))
-        cls.cam = save(Camera(serial="40012345", model="Basler acA3800-10gm"))
-        cls.exp = save(Experiment(code="ISO-2026", name="Isolation vs group"))
-        cls.iso7 = save(Manipulation(code="iso7d", kind=kind["isolation"], params={"duration_days": 7}))
-        cls.grp7 = save(Manipulation(code="grp7d", kind=kind["group_housing"],
-                                     params={"duration_days": 7, "group_size": 20}))
-        cls.coc = save(Manipulation(code="coc75-vapor", kind=kind["drug"], phase="during",
-                                    params={"substance": "cocaine", "dose": 75, "dose_unit": "ug",
-                                            "delivery": "vapor"}))
-        cls.c_iso = cls.condition("CS_iso7d", cls.iso7)
-        cls.c_grp = cls.condition("CS_grp7d", cls.grp7)
-        cls.c_coc = cls.condition("CS_grp7d+coc75", cls.grp7, cls.coc)
-        cls.cohort = save(Cohort(code="CS-20261015", genotype=cls.CS, eclosion_from=dt.date(2026, 10, 14),
-                                 eclosion_to=dt.date(2026, 10, 15)))
-        cls.grid4 = save(ArenaLayout(code="4-grid", n_arenas=4, size_x_mm=40))
-        def half(x0): return [[x0, 0], [x0 + 20, 0], [x0 + 20, 40], [x0, 40]]
-        cls.wall = save(ArenaLayout(code="wall-1", n_arenas=1, shape="rect", size_x_mm=40, size_y_mm=40,
-                                    template={"arenas": {"1": {"zones": {"left": half(0), "right": half(20)}}}}))
-
-    @classmethod
-    def condition(cls, code, *manipulations):
-        c = save(Condition(code=code, genotype=cls.CS))
-        c.manipulations.set(manipulations)
-        return c
+        CS = Genotype.objects.get(code="CS")
+        cls.rig, cls.cam = save(Rig(code="R1")), save(Camera(code="1", model="Basler acA3800-10gm"))
+        cls.exp = save(Experiment(code="ISO-2026", name="Isolation"))
+        cls.ctrl = save(Condition(code="Control", genotype=CS))
+        cls.iso = save(Condition(code="Iso7d", genotype=CS, description="Isolated 7 days"))
+        cls.g2x2 = save(ArenaLayout(code="2x2", rows=2, cols=2, arena_diameter_mm=40))
+        cls.g3x4 = save(ArenaLayout(code="3x4", rows=3, cols=4, arena_diameter_mm=40))
+        cls.wall = save(ArenaLayout(code="wall-2x2", rows=2, cols=2, zones={"left": HALF(0), "right": HALF(20)}))
 
     def recording(self, layout, condition, **kw):
         rec = save(Recording(experiment=self.exp, rig=self.rig, camera=self.cam, layout=layout,
-                             default_condition=condition, default_cohort=self.cohort, started_at=T0, **kw))
+                             condition=condition, started_at=T0, n_flies=12, **kw))
         rec.populate_arenas()
         return rec
 
@@ -60,109 +43,81 @@ class DomainScenarios(TestCase):
             obj.full_clean()
         self.assertIn(field, ctx.exception.message_dict)
 
-    # --- design ---------------------------------------------------------------
-
-    def test_manipulation_params_follow_schema(self):
-        self.assertInvalid(Manipulation(code="bad", kind=self.iso7.kind, params={"days": 7}), "params")
-
-    def test_condition_combination_is_unique(self):
-        self.assertEqual(list(Condition(genotype=self.CS).duplicates(self.CS.pk, [self.grp7.pk])), [self.c_grp])
-
-    # --- scenario 1: 4-grid, isolated vs grouped ------------------------------
-
-    def test_grid_recording(self):
-        rec = self.recording(self.grid4, self.c_iso)
+    def test_like_old_gui_2x2(self):
+        rec = self.recording(self.g2x2, self.ctrl, sex="M", sorting_date=dt.date(2026, 10, 17))
         self.assertEqual(rec.code, "R1-20261022-001")
-        self.assertEqual(rec.arenas.count(), 4)
-        for i in (3, 4):
-            g = Arena.objects.get(recording=rec, index=i).fly_groups.get()
-            g.condition = self.c_grp
-            save(g)
-        self.assertEqual(FlyGroup.objects.filter(arena__recording=rec, condition=self.c_grp).count(), 2)
-        self.assertEqual(rec.arenas.first().fly_groups.first().age_days, (7, 8))
-        self.assertEqual(self.recording(self.grid4, self.c_iso).code, "R1-20261022-002")
+        self.assertEqual(rec.days_since_sorting, 5)
+        self.assertEqual([(g.condition.code, g.sex, g.n_flies) for g in FlyGroup.objects.filter(arena__recording=rec)],
+                         [("Control", "M", 12)] * 4)
+        a3 = rec.arenas.get(index=3)
+        a3.status = Arena.Status.EXCLUDED          # "Arena 3 Valid" unticked; reason optional
+        save(a3)
+        self.assertEqual(rec.arenas.filter(status="ok").count(), 3)
 
-    def test_plain_arena_has_only_full_zone(self):
-        arena = self.recording(self.grid4, self.c_iso).arenas.first()
-        self.assertInvalid(FlyGroup(arena=arena, zone="left", condition=self.c_iso), "zone")
+    def test_3x4_numbering_and_empty_positions(self):
+        rec = self.recording(self.g3x4, self.iso)
+        self.assertEqual([rec.arenas.get(index=i).position for i in (1, 4, 5, 12)], [(1, 1), (1, 4), (2, 1), (3, 4)])
+        for i in (11, 12):
+            a = rec.arenas.get(index=i)
+            a.status = Arena.Status.EMPTY
+            save(a)
+        self.assertEqual(FlyGroup.objects.filter(arena__recording=rec).count(), 10)
+        rec.populate_arenas()
+        self.assertEqual(FlyGroup.objects.filter(arena__recording=rec).count(), 10)
+        self.assertInvalid(FlyGroup(arena=rec.arenas.get(index=12), condition=self.iso), "arena")
 
-    def test_excluding_arena_needs_reason(self):
-        arena = self.recording(self.grid4, self.c_iso).arenas.first()
-        arena.status = Arena.Status.EXCLUDED
-        self.assertInvalid(arena, "exclusion_reason")
+    def test_wall_arena_sides(self):
+        rec = self.recording(self.wall, self.ctrl)
+        a1 = rec.arenas.get(index=1)
+        self.assertEqual(sorted(a1.fly_groups.values_list("zone", flat=True)), ["left", "right"])
+        right = a1.fly_groups.get(zone="right")
+        right.condition, right.sex = self.iso, "F"
+        save(right)
+        save(Event(recording=rec, kind=EventKind.objects.get(code="divider_removed"), t_seconds=300))
+        self.assertInvalid(FlyGroup(arena=rec.arenas.get(index=2), zone="full", condition=self.ctrl), "zone")
 
-    def test_arena_windows(self):
-        rec = self.recording(self.grid4, self.c_iso, default_window_start_s=600, default_window_end_s=2100)
+    def test_vapor_puff(self):
+        rec = self.recording(self.g2x2, self.ctrl)
+        puff = EventKind.objects.get(code="vapor_puff")
+        save(Event(recording=rec, kind=puff, t_seconds=600, duration_s=10,
+                   params={"substance": "cocaine", "dose": 75, "dose_unit": "ug"}))
+        self.assertInvalid(Event(recording=rec, kind=puff, t_seconds=600,
+                                 params={"substance": "cocaine", "dose": 75, "dose_unit": "ug"}), "duration_s")
+        self.assertInvalid(Event(recording=rec, kind=puff, t_seconds=600, duration_s=10,
+                                 params={"substance": "cocaine"}), "params")
+
+    def test_windows(self):
+        rec = self.recording(self.g2x2, self.ctrl, window_start_s=600, window_end_s=2100)
         self.assertEqual([a.window for a in rec.arenas.all()], [(600, 2100)] * 4)
         a2 = rec.arenas.get(index=2)
         a2.window_start_s, a2.window_end_s = 720, 2220
         save(a2)
-        self.assertEqual(rec.arenas.get(index=2).window, (720, 2220))
         a2.window_end_s = 500
         self.assertInvalid(a2, "window_end_s")
-        whole = self.recording(self.grid4, self.c_iso).arenas.first()
-        self.assertEqual(whole.window, (0.0, None))
+        self.assertEqual(self.recording(self.g2x2, self.ctrl).arenas.first().window, (0.0, None))
 
-    # --- scenario 2: wall arena -----------------------------------------------
-
-    def test_wall_arena(self):
-        rec = self.recording(self.wall, self.c_grp)
-        arena = rec.arenas.get()
-        self.assertEqual(sorted(arena.fly_groups.values_list("zone", flat=True)), ["left", "right"])
-        right = arena.fly_groups.get(zone="right")
-        right.condition, right.sex = self.c_iso, "M"
-        save(right)
-        save(Event(recording=rec, arena=arena, kind=EventKind.objects.get(code="divider_removed"), t_seconds=300))
-        self.assertEqual(rec.events.count(), 1)
-
-    def test_point_event_has_no_duration(self):
-        rec = self.recording(self.wall, self.c_grp)
-        self.assertInvalid(Event(recording=rec, kind=EventKind.objects.get(code="divider_removed"),
-                                 t_seconds=10, duration_s=5), "duration_s")
-
-    def test_layout_template_validated(self):
-        self.assertInvalid(ArenaLayout(code="bad", n_arenas=1, template={"arenas": {"2": {}}}), "template")
-
-    # --- scenario 3: vapor puff -----------------------------------------------
-
-    def test_vapor_puff(self):
-        rec = self.recording(self.grid4, self.c_coc)
-        puff = EventKind.objects.get(code="vapor_puff")
-        save(Event(recording=rec, kind=puff, t_seconds=600, duration_s=10, manipulation=self.coc,
-                   params={"flow_ml_min": 50}))
-        self.assertInvalid(Event(recording=rec, kind=puff, t_seconds=600, manipulation=self.coc), "duration_s")
-        self.assertInvalid(Event(recording=rec, kind=puff, t_seconds=600, duration_s=10, manipulation=self.iso7),
-                           "manipulation")
-
-    def test_event_arena_must_belong_to_recording(self):
-        other = self.recording(self.wall, self.c_grp).arenas.get()
-        rec = self.recording(self.grid4, self.c_coc)
-        self.assertInvalid(Event(recording=rec, arena=other, kind=EventKind.objects.get(code="note"),
-                                 t_seconds=1), "arena")
-
-    # --- scenario 4: DAM from the same cohort ---------------------------------
-
-    def test_dam_run(self):
-        run = save(DamRun(code="M05-20261015", monitor=save(DamMonitor(code="M05", n_channels=32)),
-                          started_at=dt.datetime(2026, 10, 15, 10, tzinfo=dt.timezone.utc)))
-        for ch in range(1, 17):
-            save(DamChannel(run=run, channel=ch, condition=self.c_iso, cohort=self.cohort, sex="M"))
-        self.assertEqual(run.channels.count(), 16)
-        self.assertInvalid(DamChannel(run=run, channel=40, condition=self.c_iso), "channel")
-        group = self.recording(self.grid4, self.c_grp).arenas.first().fly_groups.first()
-        self.assertInvalid(DamChannel(run=run, channel=20, condition=self.c_iso, fly_group=group), "fly_group")
-
-    # --- soft delete and history ----------------------------------------------
-
-    def test_soft_delete_never_reuses_codes(self):
-        first = self.recording(self.grid4, self.c_iso)
+    def test_codes_history_soft_delete(self):
+        first = self.recording(self.g2x2, self.ctrl)
+        first.technical_notes = "camera bumped at 12 min"
+        save(first)
+        self.assertEqual(first.history.count(), 2)
         first.delete()
         self.assertFalse(Recording.objects.filter(pk=first.pk).exists())
-        self.assertTrue(Recording.all_objects.filter(pk=first.pk).exists())
-        self.assertEqual(self.recording(self.grid4, self.c_iso).code, "R1-20261022-002")
+        self.assertEqual(self.recording(self.g2x2, self.ctrl).code, "R1-20261022-002")
 
-    def test_history_is_kept(self):
-        rec = self.recording(self.grid4, self.c_iso)
-        rec.notes = "camera bumped at 12 min"
-        save(rec)
-        self.assertEqual(rec.history.count(), 2)
+    def test_dates_and_layout_validated(self):
+        self.assertInvalid(Recording(experiment=self.exp, rig=self.rig, camera=self.cam, layout=self.g2x2,
+                                     condition=self.ctrl, started_at=T0, cross_date=dt.date(2026, 10, 10),
+                                     sorting_date=dt.date(2026, 10, 1)), "sorting_date")
+        self.assertInvalid(ArenaLayout(code="bad", rows=1, cols=2, zones={"left": [[0, 0], [1, 1]]}), "zones")
+
+
+class LabFixture(TestCase):
+    """loaddata skips validation, so validate every fixture object here."""
+    fixtures = ["catalogs", "lab"]
+
+    def test_lab_fixture_is_valid(self):
+        from . import models as m
+        for model in (m.Genotype, m.EventKind, m.Rig, m.Camera, m.ArenaLayout, m.Condition):
+            for obj in model.objects.all():
+                obj.full_clean()

@@ -2,10 +2,14 @@ asgiref==3.13.0
 attrs==26.1.0
 django==5.2.18
 django-simple-history==3.13.0
+gunicorn==26.2.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
+psycopg==3.3.6
+psycopg-binary==3.3.6
 pyyaml==6.0.3
 referencing==0.37.0
 rpds-py==2026.9.1
 sqlparse==0.6.0
 typing-extensions==4.16.0
+whitenoise==6.12.0

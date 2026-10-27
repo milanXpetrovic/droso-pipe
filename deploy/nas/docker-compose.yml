@@ -1,0 +1,64 @@
+# droso-pipe app on TrueNAS: Apps -> Discover -> (menu) -> Install via YAML.
+# Replace every CHANGE_ME before installing. Do NOT commit real passwords to git.
+#
+# Folders (create first, see deploy/nas/README.md):
+#   /mnt/lab/apps/postgres   database files
+#   /mnt/lab/apps/media      uploaded files          (owner pipeline, 3002:3003)
+#   /mnt/lab/apps/backups    nightly database dumps
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: droso
+      POSTGRES_USER: droso
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
+    volumes:
+      - /mnt/lab/apps/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U droso -d droso"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.1.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    user: "3002:3003"                       # pipeline
+    environment:
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: CHANGE_ME_LONG_RANDOM_STRING
+      DJANGO_ALLOWED_HOSTS: 10.11.48.18,lab-nas,lab-nas.local
+      DJANGO_CSRF_TRUSTED_ORIGINS: http://10.11.48.18:8080,http://lab-nas:8080,http://lab-nas.local:8080
+      DJANGO_MEDIA_ROOT: /data/media
+      POSTGRES_DB: droso
+      POSTGRES_USER: droso
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
+      POSTGRES_HOST: db
+    volumes:
+      - /mnt/lab/apps/media:/data/media
+    ports:
+      - "8080:8000"
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: CHANGE_ME_DB_PASSWORD
+    volumes:
+      - /mnt/lab/apps/backups:/backups
+    # one compressed dump per day, kept for 30 days
+    entrypoint: >
+      sh -c 'while true; do
+               pg_dump -h db -U droso -Fc droso > /backups/droso-$$(date +%F).dump.tmp &&
+               mv /backups/droso-$$(date +%F).dump.tmp /backups/droso-$$(date +%F).dump;
+               find /backups -name "droso-*.dump" -mtime +30 -delete;
+               sleep 86400;
+             done'
