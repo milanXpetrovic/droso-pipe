@@ -255,6 +255,36 @@ class PreviewTests(PreviewBase):
         self.assertNotContains(self.client.get(reverse("intake:register", args=[v.pk])), "Another frame")
 
 
+class ProbeTests(TestCase):
+    """Header reading for different containers and frame rates."""
+
+    def make(self, name, rate, codec_args):
+        import subprocess
+        from .preview import FFMPEG
+        out = Path(tempfile.mkdtemp()) / name
+        subprocess.run([FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc=duration=3:size=320x240:rate={rate}",
+                        *codec_args, "-y", str(out)], check=True)
+        return out
+
+    def test_mp4_24fps(self):
+        from .preview import probe
+        info = probe(self.make("a.mp4", 24, ["-pix_fmt", "yuv420p"]))
+        self.assertEqual((info["fps"], info["width"], info["height"], info["codec"]), (24.0, 320, 240, "h264"))
+        self.assertAlmostEqual(info["duration_s"], 3.0, delta=0.1)
+
+    def test_avi_29_97fps(self):
+        from .preview import probe
+        info = probe(self.make("b.avi", "30000/1001", ["-c:v", "mjpeg"]))
+        self.assertAlmostEqual(info["fps"], 29.97, places=2)
+        self.assertEqual(info["codec"], "mjpeg")
+
+    def test_not_a_video(self):
+        from .preview import probe
+        f = Path(tempfile.mkdtemp()) / "x.mp4"
+        f.write_bytes(b"\0" * 100)
+        self.assertIsNone(probe(f)["fps"])
+
+
 class LengthTests(PreviewBase):
     """Video length shown in the UI and used to check the analysis window (6-second test video)."""
 
@@ -264,7 +294,10 @@ class LengthTests(PreviewBase):
 
     def test_length_in_inbox_and_form(self):
         v = self.make_video()
-        self.assertContains(self.client.get(reverse("intake:inbox")), "0:06")
+        inbox = self.client.get(reverse("intake:inbox"))
+        self.assertContains(inbox, "0:06")
+        v.refresh_from_db()
+        self.assertEqual((v.fps, v.width, v.height, v.n_frames_expected), (10.0, 320, 240, 60))
         self.assertContains(self.client.get(reverse("intake:register", args=[v.pk])), "0:06")
 
     def test_window_must_fit_in_video(self):

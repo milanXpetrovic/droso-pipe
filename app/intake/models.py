@@ -27,7 +27,12 @@ class IncomingVideo(models.Model):
     camera_model = models.CharField(max_length=128, blank=True)
     camera_serial = models.CharField(max_length=64, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
-    duration_s = models.FloatField(null=True, blank=True, help_text="Read from the video when first needed.")
+    # read from the video header when first needed
+    duration_s = models.FloatField(null=True, blank=True)
+    fps = models.FloatField(null=True, blank=True, help_text="As declared by the file.")
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    codec = models.CharField(max_length=32, blank=True)
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.NEW)
     recording = models.OneToOneField(Recording, null=True, blank=True, on_delete=models.PROTECT,
@@ -44,13 +49,25 @@ class IncomingVideo(models.Model):
         now = now or timezone.now()
         return (now - self.changed_at).total_seconds() >= settings.INCOMING_STABLE_SECONDS
 
+    def ensure_probe(self) -> None:
+        """Read duration, fps, resolution and codec once; cached on the row."""
+        if self.duration_s is not None:
+            return
+        from .preview import probe, video_path
+        info = probe(video_path(self.rel_path))
+        if info["duration_s"] is None:
+            return
+        for field, value in info.items():
+            setattr(self, field, value)
+        self.save(update_fields=list(info))
+
     def ensure_duration(self) -> float | None:
-        if self.duration_s is None:
-            from .preview import duration_s, video_path
-            self.duration_s = duration_s(video_path(self.rel_path))
-            if self.duration_s is not None:
-                self.save(update_fields=["duration_s"])
+        self.ensure_probe()
         return self.duration_s
+
+    @property
+    def n_frames_expected(self) -> int | None:
+        return round(self.duration_s * self.fps) if self.duration_s and self.fps else None
 
     @property
     def camera(self) -> Camera | None:

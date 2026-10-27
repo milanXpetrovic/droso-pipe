@@ -10,6 +10,7 @@
     <div><label>Started</label>{% if video.started_at %}{{ video.started_at|date:"d.m.Y H:i:s" }}{% else %}enter below{% endif %}</div>
     <div><label>Size</label>{{ video.size_bytes|filesizeformat }}</div>
     <div><label>Length</label>{{ duration|hms }}</div>
+    <div><label>Video</label>{% if video.fps %}{{ video.fps|floatformat:"-2" }} fps · {{ video.width }}×{{ video.height }} · {{ video.codec }}{% else %}—{% endif %}</div>
   </div>
 </div>
 {% for w in warnings %}<div class="msg warning">{{ w }}</div>{% endfor %}

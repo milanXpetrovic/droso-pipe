@@ -14,6 +14,10 @@ from django.conf import settings
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 DURATION = re.compile(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)")
+VIDEO_STREAM = re.compile(r"Stream #\S+.*?: Video: (?P<codec>\w+)(?P<rest>.*)")
+SIZE = re.compile(r"\b(\d{2,5})x(\d{2,5})\b")
+FPS = re.compile(r"([\d.]+) fps")
+TBR = re.compile(r"([\d.]+)k? tbr")
 
 
 def video_path(rel_path: str) -> Path:
@@ -24,10 +28,26 @@ def video_path(rel_path: str) -> Path:
     return path
 
 
-def duration_s(path: Path) -> float | None:
+def probe(path: Path) -> dict:
+    """Duration, fps, resolution and codec from the container header (no decoding, takes ~0.1 s).
+    The fps is what the file declares; the frame count is checked later, at ingest."""
     p = subprocess.run([FFMPEG, "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=30)
+    info = {"duration_s": None, "fps": None, "width": None, "height": None, "codec": ""}
     m = DURATION.search(p.stderr)
-    return int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3]) if m else None
+    if m:
+        info["duration_s"] = int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3])
+    v = VIDEO_STREAM.search(p.stderr)
+    if v:
+        info["codec"] = v["codec"]
+        if size := SIZE.search(v["rest"]):
+            info["width"], info["height"] = int(size[1]), int(size[2])
+        if fps := FPS.search(v["rest"]) or TBR.search(v["rest"]):
+            info["fps"] = float(fps[1])
+    return info
+
+
+def duration_s(path: Path) -> float | None:
+    return probe(path)["duration_s"]
 
 
 def frame_jpeg(path: Path, t: float, cache_dir: Path, width: int = 1600) -> Path:
