@@ -119,6 +119,8 @@ class Condition(DomainModel):
 class Protocol(DomainModel):
     code = models.CharField(max_length=64, unique=True, validators=[CODE])
     name = models.CharField(max_length=200, blank=True)
+    duration_s = models.PositiveIntegerField(null=True, blank=True,
+                                             help_text="Expected analysed length in seconds (30 min = 1800).")
     description = models.TextField(blank=True)
     url = models.URLField(blank=True)
 

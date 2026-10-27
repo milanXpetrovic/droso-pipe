@@ -1,16 +1,18 @@
 {% extends "intake/base.html" %}
+{% load intake_extras %}
 {% block content %}
 <h1>New videos</h1>
 <div class="card">
 {% if pending %}
 <table>
-  <tr><th>Rig</th><th>File</th><th>Camera</th><th>Started</th><th>Size</th><th></th></tr>
+  <tr><th>Rig</th><th>File</th><th>Camera</th><th>Started</th><th>Length</th><th>Size</th><th></th></tr>
   {% for v in pending %}
   <tr>
     <td>{{ v.rig }}</td>
     <td class="mono">{{ v.file_name }}</td>
     <td>{% if v.known_camera %}{{ v.known_camera }}{% elif v.camera_serial %}<span class="badge">new camera {{ v.camera_serial }}</span>{% else %}<span class="muted">?</span>{% endif %}</td>
     <td>{% if v.started_at %}{{ v.started_at|date:"d.m.Y H:i:s" }}{% else %}<span class="muted">not in name</span>{% endif %}</td>
+    <td>{% if v.duration_s %}{{ v.duration_s|hms }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td>{{ v.size_bytes|filesizeformat }}</td>
     <td style="white-space:nowrap">
       {% if v.ready %}

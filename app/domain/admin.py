@@ -24,7 +24,7 @@ class ConditionAdmin(BaseAdmin):
 
 @admin.register(m.Protocol)
 class ProtocolAdmin(BaseAdmin):
-    list_display = ("code", "name")
+    list_display = ("code", "name", "duration_s")
 
 
 @admin.register(m.Rig)

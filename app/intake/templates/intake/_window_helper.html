@@ -1,0 +1,43 @@
+{% load intake_extras %}
+{# Compares the video length with the protocol's expected length and fills the window with one click. #}
+{% if duration %}
+<div class="window-helper" style="margin-top:.8rem">
+  <div id="win-compare" class="muted">Video length {{ duration|hms }}.</div>
+  <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem">
+    <button type="button" class="btn secondary" data-win="whole">Whole video</button>
+    <button type="button" class="btn secondary" data-win="first" hidden></button>
+    <button type="button" class="btn secondary" data-win="last" hidden></button>
+  </div>
+</div>
+{{ protocol_durations|json_script:"protocol-durations" }}
+<script>
+(() => {
+  const duration = {{ duration|floatformat:"1" }};
+  const protocols = JSON.parse(document.getElementById("protocol-durations").textContent);
+  const sel = document.getElementById("id_protocol"), start = document.getElementById("id_window_start_s"),
+        end = document.getElementById("id_window_end_s"), info = document.getElementById("win-compare");
+  const fmt = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+                     return (h ? `${h}:${String(m).padStart(2, "0")}` : `${m}`) + `:${String(x).padStart(2, "0")}`; };
+  const first = document.querySelector("[data-win=first]"), last = document.querySelector("[data-win=last]");
+  function update() {
+    const p = sel ? protocols[sel.value] : null;
+    first.hidden = last.hidden = true;
+    if (!p) { info.textContent = `Video length ${fmt(duration)}. Pick a protocol with a set length to compare.`; info.className = "muted"; return; }
+    const diff = duration - p;
+    if (Math.abs(diff) < 1) { info.textContent = `Video ${fmt(duration)} = protocol ${fmt(p)}. Nothing to cut.`; info.className = "muted"; }
+    else if (diff > 0) {
+      info.textContent = `Video ${fmt(duration)}, protocol ${fmt(p)}: ${fmt(diff)} longer, choose which part to keep.`;
+      info.className = "";
+      first.textContent = `First ${fmt(p)}`; last.textContent = `Last ${fmt(p)}`; first.hidden = last.hidden = false;
+      first.dataset.s = 0; first.dataset.e = p; last.dataset.s = (duration - p).toFixed(1); last.dataset.e = duration.toFixed(1);
+    } else { info.textContent = `Warning: video ${fmt(duration)} is ${fmt(-diff)} shorter than protocol ${fmt(p)}.`; info.className = "msg warning"; }
+  }
+  document.querySelectorAll("[data-win]").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.win === "whole") { start.value = ""; end.value = ""; }
+    else { start.value = b.dataset.s; end.value = b.dataset.e; }
+  }));
+  if (sel) sel.addEventListener("change", update);
+  update();
+})();
+</script>
+{% endif %}

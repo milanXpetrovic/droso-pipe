@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from domain.models import Arena, FlyGroup, Recording
+from domain.models import Arena, FlyGroup, Protocol, Recording
 
 from .forms import ArenaFormSet, FlyGroupFormSet, RegisterForm
 from .models import IncomingVideo
@@ -50,6 +50,11 @@ def inbox(request):
     for v in pending:
         v.ready = v.is_stable(now)
         v.known_camera = v.camera
+        if v.ready:
+            try:
+                v.ensure_duration()          # read once, then cached on the row
+            except (OSError, ValueError):
+                pass
     done = (IncomingVideo.objects.filter(status__in=[IncomingVideo.Status.REGISTERED, IncomingVideo.Status.INGESTED])
             .select_related("rig", "recording")[:20])
     return render(request, "intake/inbox.html", {"pending": pending, "done": done})
@@ -74,9 +79,11 @@ def register(request, pk):
                         f"{video.rig}. Were the cameras swapped?")
 
     instance = Recording(rig=video.rig, camera=camera, operator=request.user, started_at=video.started_at)
+    preview = preview_context(video)
+    duration = preview.get("duration")
     if request.method == "POST":
         form = RegisterForm(request.POST, instance=instance, camera_from_file=camera,
-                            started_from_file=video.started_at)
+                            started_from_file=video.started_at, video_duration=duration)
         if form.is_valid():
             with transaction.atomic():
                 locked = IncomingVideo.objects.select_for_update().get(pk=video.pk)
@@ -96,20 +103,25 @@ def register(request, pk):
         last = Recording.objects.filter(rig=video.rig).order_by("-started_at").first()
         initial = {f: getattr(last, f) for f in COPY_FROM_LAST} if last else {}
         form = RegisterForm(instance=instance, initial=initial, camera_from_file=camera,
-                            started_from_file=video.started_at)
+                            started_from_file=video.started_at, video_duration=duration)
         if last:
             messages.info(request, f"Fields copied from the last recording on {video.rig} ({last.code}).")
+    protocol_durations = {str(p.pk): p.duration_s for p in Protocol.objects.exclude(duration_s=None)}
     return render(request, "intake/register.html",
-                  {"video": video, "form": form, "warnings": warnings, **preview_context(video)})
+                  {"video": video, "form": form, "warnings": warnings, "protocol_durations": protocol_durations,
+                   **preview})
 
 
 @operator_view
 def arenas(request, code):
     recording = get_object_or_404(Recording, code=code)
+    video = getattr(recording, "incoming_video", None)
+    preview = preview_context(video)
+    arena_kwargs = {"form_kwargs": {"video_duration": preview.get("duration")}}
     arena_qs = Arena.objects.filter(recording=recording).order_by("index")
     group_qs = FlyGroup.objects.filter(arena__recording=recording).select_related("arena").order_by("arena__index", "zone")
     if request.method == "POST":
-        arena_fs = ArenaFormSet(request.POST, queryset=arena_qs, prefix="arena")
+        arena_fs = ArenaFormSet(request.POST, queryset=arena_qs, prefix="arena", **arena_kwargs)
         group_fs = FlyGroupFormSet(request.POST, queryset=group_qs, prefix="group")
         if arena_fs.is_valid() and group_fs.is_valid():
             with transaction.atomic():
@@ -118,7 +130,7 @@ def arenas(request, code):
             messages.success(request, f"{recording.code} saved.")
             return redirect("intake:inbox")
     else:
-        arena_fs = ArenaFormSet(queryset=arena_qs, prefix="arena")
+        arena_fs = ArenaFormSet(queryset=arena_qs, prefix="arena", **arena_kwargs)
         group_fs = FlyGroupFormSet(queryset=group_qs, prefix="group")
 
     layout = recording.layout
@@ -126,10 +138,9 @@ def arenas(request, code):
     for form in arena_fs.forms:
         r, c = layout.position(form.instance.index)
         grid[r - 1][c - 1] = form
-    video = getattr(recording, "incoming_video", None)
     return render(request, "intake/arenas.html",
                   {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid,
-                   **preview_context(video)})
+                   "protocol_duration": recording.protocol.duration_s if recording.protocol else None, **preview})
 
 
 @operator_view

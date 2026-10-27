@@ -1,4 +1,5 @@
 {% extends "intake/base.html" %}
+{% load intake_extras %}
 {% block content %}
 <h1>Metadata for a new video</h1>
 <div class="card">
@@ -8,6 +9,7 @@
     <div><label>Camera</label>{{ video.camera_model|default:"?" }} {% if video.camera_serial %}({{ video.camera_serial }}){% endif %}</div>
     <div><label>Started</label>{% if video.started_at %}{{ video.started_at|date:"d.m.Y H:i:s" }}{% else %}enter below{% endif %}</div>
     <div><label>Size</label>{{ video.size_bytes|filesizeformat }}</div>
+    <div><label>Length</label>{{ duration|hms }}</div>
   </div>
 </div>
 {% for w in warnings %}<div class="msg warning">{{ w }}</div>{% endfor %}
@@ -28,6 +30,7 @@
       </div>
       {% endfor %}
     </div>
+    {% if forloop.counter == 3 %}{% include "intake/_window_helper.html" %}{% endif %}
   </div>
   {% endfor %}
   <button class="btn" type="submit">Save and check arenas</button>

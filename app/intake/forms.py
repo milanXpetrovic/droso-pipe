@@ -2,6 +2,16 @@ from django import forms
 
 from domain.models import Arena, Camera, FlyGroup, Recording
 
+def check_inside_video(form, data, duration):
+    """The analysis window must lie inside the video (half a second of slack for rounding)."""
+    if not duration:
+        return
+    for field in ("window_start_s", "window_end_s"):
+        value = data.get(field)
+        if value is not None and value > duration + 0.5:
+            form.add_error(field, f"The video is only {duration:.1f} s long.")
+
+
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 DATETIME = forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"}, format="%Y-%m-%dT%H:%M:%S")
 
@@ -24,8 +34,9 @@ class RegisterForm(forms.ModelForm):
                    "technical_notes": forms.Textarea(attrs={"rows": 3}),
                    "behavior_notes": forms.Textarea(attrs={"rows": 3})}
 
-    def __init__(self, *args, camera_from_file=None, started_from_file=None, **kwargs):
+    def __init__(self, *args, camera_from_file=None, started_from_file=None, video_duration=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.video_duration = video_duration
         self.fields["camera"].queryset = Camera.objects.all()
         if camera_from_file is not None:
             self.fields["camera"].initial = camera_from_file
@@ -34,6 +45,11 @@ class RegisterForm(forms.ModelForm):
             self.fields["started_at"].initial = started_from_file
             self.fields["started_at"].disabled = True
             self.fields["started_at"].help_text = "From the file name."
+
+    def clean(self):
+        data = super().clean()
+        check_inside_video(self, data, self.video_duration)
+        return data
 
     def grouped(self):
         return [(title, [self[name] for name in names]) for title, names in GROUPS]
@@ -44,6 +60,15 @@ class ArenaForm(forms.ModelForm):
         model = Arena
         fields = ["status", "exclusion_reason", "window_start_s", "window_end_s"]
         widgets = {"exclusion_reason": forms.TextInput(attrs={"placeholder": "reason (optional)"})}
+
+    def __init__(self, *args, video_duration=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.video_duration = video_duration
+
+    def clean(self):
+        data = super().clean()
+        check_inside_video(self, data, self.video_duration)
+        return data
 
 
 class FlyGroupForm(forms.ModelForm):

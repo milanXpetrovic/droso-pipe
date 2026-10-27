@@ -198,7 +198,7 @@ class RegisterTests(RegisterBase):
         self.assertEqual(self.client.get(reverse("intake:inbox")).status_code, 403)
 
 
-class PreviewTests(RegisterBase):
+class PreviewBase(RegisterBase):
     """Uses a real 6-second test video made by ffmpeg."""
 
     def make_video(self, rig="rig1", name=NAME):
@@ -221,6 +221,9 @@ class PreviewTests(RegisterBase):
         self.media.cleanup()
         super().tearDown()
 
+
+
+class PreviewTests(PreviewBase):
     def test_duration_is_read_and_cached(self):
         v = self.make_video()
         self.assertAlmostEqual(v.ensure_duration(), 6.0, delta=0.2)
@@ -250,3 +253,33 @@ class PreviewTests(RegisterBase):
     def test_unreadable_video_has_no_preview(self):
         v = self.ready_video()                    # zeros, not a real video
         self.assertNotContains(self.client.get(reverse("intake:register", args=[v.pk])), "Another frame")
+
+
+class LengthTests(PreviewBase):
+    """Video length shown in the UI and used to check the analysis window (6-second test video)."""
+
+    def test_hms_filter(self):
+        from .templatetags.intake_extras import hms
+        self.assertEqual([hms(1872.4), hms(3725), hms(59.6), hms(None)], ["31:12", "1:02:05", "1:00", "—"])
+
+    def test_length_in_inbox_and_form(self):
+        v = self.make_video()
+        self.assertContains(self.client.get(reverse("intake:inbox")), "0:06")
+        self.assertContains(self.client.get(reverse("intake:register", args=[v.pk])), "0:06")
+
+    def test_window_must_fit_in_video(self):
+        v = self.make_video()
+        r = self.post_form(v, window_start_s=1, window_end_s=100)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "only 6.0 s long")
+        self.post_form(v, window_start_s=1, window_end_s=5)
+        self.assertEqual(Recording.objects.get().window_end_s, 5)
+
+    def test_protocol_length_feeds_the_helper(self):
+        from domain.models import Protocol
+        p = Protocol.objects.create(code="free-5s", duration_s=5)
+        v = self.make_video()
+        html = self.client.get(reverse("intake:register", args=[v.pk])).content.decode()
+        self.assertIn('id="protocol-durations"', html)
+        self.assertIn(f'"{p.pk}": 5', html)
+        self.assertIn('data-win="last"', html)

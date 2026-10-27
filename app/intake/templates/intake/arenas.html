@@ -1,7 +1,8 @@
 {% extends "intake/base.html" %}
+{% load intake_extras %}
 {% block content %}
 <h1>Arenas of <span class="mono">{{ recording.code }}</span></h1>
-<p class="muted">{{ recording.layout }} · {{ recording.condition }} · {{ recording.get_sex_display }}{% if recording.n_flies %} · {{ recording.n_flies }} flies per arena{% endif %}</p>
+<p class="muted">{{ recording.layout }} · {{ recording.condition }} · {{ recording.get_sex_display }}{% if recording.n_flies %} · {{ recording.n_flies }} flies per arena{% endif %}{% if duration %} · video {{ duration|hms }}{% endif %}{% if protocol_duration %} · protocol {{ protocol_duration|hms }}{% endif %}</p>
 {% if preview_video %}{% with layout=recording.layout %}{% include "intake/_preview.html" %}{% endwith %}{% endif %}
 <form method="post">
   {% csrf_token %}
