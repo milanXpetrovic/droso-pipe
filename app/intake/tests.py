@@ -91,7 +91,7 @@ class ScannerTests(Base):
         self.assertEqual(IncomingVideo.objects.get().status, IncomingVideo.Status.MISSING)
 
 
-class RegisterTests(Base):
+class RegisterBase(Base):
     def setUp(self):
         super().setUp()
         self.user = User.objects.create_user("op", password="x")
@@ -113,6 +113,9 @@ class RegisterTests(Base):
                 "condition": self.ctrl.pk, "sex": "M", "n_flies": 12, **extra}
         return self.client.post(reverse("intake:register", args=[video.pk]), data)
 
+
+
+class RegisterTests(RegisterBase):
     def test_inbox_lists_video(self):
         self.ready_video()
         r = self.client.get(reverse("intake:inbox"))
@@ -193,3 +196,57 @@ class RegisterTests(Base):
     def test_requires_permission(self):
         self.client.force_login(User.objects.create_user("guest", password="x"))
         self.assertEqual(self.client.get(reverse("intake:inbox")).status_code, 403)
+
+
+class PreviewTests(RegisterBase):
+    """Uses a real 6-second test video made by ffmpeg."""
+
+    def make_video(self, rig="rig1", name=NAME):
+        import subprocess
+        from .preview import FFMPEG
+        out = self.root / "incoming" / rig / name
+        subprocess.run([FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=6:size=320x240:rate=10",
+                        "-pix_fmt", "yuv420p", "-y", str(out)], check=True)
+        scan(now=timezone.now() - dt.timedelta(minutes=5))
+        return IncomingVideo.objects.get(file_name=name)
+
+    def setUp(self):
+        super().setUp()
+        self.media = tempfile.TemporaryDirectory()
+        self.media_override = override_settings(MEDIA_ROOT=self.media.name)
+        self.media_override.enable()
+
+    def tearDown(self):
+        self.media_override.disable()
+        self.media.cleanup()
+        super().tearDown()
+
+    def test_duration_is_read_and_cached(self):
+        v = self.make_video()
+        self.assertAlmostEqual(v.ensure_duration(), 6.0, delta=0.2)
+        v.refresh_from_db()
+        self.assertIsNotNone(v.duration_s)
+
+    def test_frame_is_a_jpeg(self):
+        v = self.make_video()
+        r = self.client.get(reverse("intake:frame", args=[v.pk]) + "?t=2.5")
+        self.assertEqual(r["Content-Type"], "image/jpeg")
+        self.assertEqual(b"".join(r.streaming_content)[:2], b"\xff\xd8")
+        r = self.client.get(reverse("intake:frame", args=[v.pk]))          # random time
+        self.assertEqual(r.status_code, 200)
+
+    def test_arenas_page_shows_frame_and_labels(self):
+        v = self.make_video()
+        self.post_form(v)
+        html = self.client.get(reverse("intake:arenas", args=[Recording.objects.get().code])).content.decode()
+        self.assertIn(reverse("intake:frame", args=[v.pk]), html)
+        for label in ("A01", "A02", "A03", "A04"):
+            self.assertIn(f'id="ov-{int(label[1:])}"', html)
+
+    def test_register_page_shows_frame(self):
+        v = self.make_video()
+        self.assertContains(self.client.get(reverse("intake:register", args=[v.pk])), "Another frame")
+
+    def test_unreadable_video_has_no_preview(self):
+        v = self.ready_video()                    # zeros, not a real video
+        self.assertNotContains(self.client.get(reverse("intake:register", args=[v.pk])), "Another frame")

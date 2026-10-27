@@ -35,6 +35,13 @@
   .help { font-size:.8rem; color:var(--muted); }
   .arena-grid { display:grid; gap:.8rem; } .arena { border:1px solid var(--line); border-radius:8px; padding:.7rem; }
   .arena h3 { margin:0 0 .5rem; font-size:.95rem; }
+  .frame-wrap { position:relative; line-height:0; border-radius:8px; overflow:hidden; background:#000; }
+  .frame-wrap img { width:100%; height:auto; display:block; }
+  .frame-grid { position:absolute; inset:0; display:grid; }
+  .frame-cell { border:1px dashed rgba(255,255,255,.55); padding:.4rem; line-height:1.2; }
+  .frame-cell span { display:inline-block; background:rgba(0,0,0,.65); color:#fff; font-weight:700; padding:.15rem .5rem; border-radius:4px; font-size:1rem; }
+  .frame-cell[data-status="excluded"] { background:rgba(200,40,40,.30); }
+  .frame-cell[data-status="empty"] { background:rgba(60,60,60,.55); }
   .badge { white-space:nowrap; font-size:.75rem; padding:.1rem .45rem; border-radius:999px; background:var(--warn-bg); color:var(--warn); }
 </style>
 </head>

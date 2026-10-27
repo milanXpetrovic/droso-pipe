@@ -27,6 +27,7 @@ class IncomingVideo(models.Model):
     camera_model = models.CharField(max_length=128, blank=True)
     camera_serial = models.CharField(max_length=64, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
+    duration_s = models.FloatField(null=True, blank=True, help_text="Read from the video when first needed.")
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.NEW)
     recording = models.OneToOneField(Recording, null=True, blank=True, on_delete=models.PROTECT,
@@ -42,6 +43,14 @@ class IncomingVideo(models.Model):
     def is_stable(self, now=None) -> bool:
         now = now or timezone.now()
         return (now - self.changed_at).total_seconds() >= settings.INCOMING_STABLE_SECONDS
+
+    def ensure_duration(self) -> float | None:
+        if self.duration_s is None:
+            from .preview import duration_s, video_path
+            self.duration_s = duration_s(video_path(self.rel_path))
+            if self.duration_s is not None:
+                self.save(update_fields=["duration_s"])
+        return self.duration_s
 
     @property
     def camera(self) -> Camera | None:

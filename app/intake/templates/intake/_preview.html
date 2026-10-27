@@ -1,0 +1,37 @@
+{# Frame from the video, optionally with the arena grid of the layout drawn over it. #}
+<div class="card">
+  <div style="display:flex; align-items:center; gap:1rem; margin-bottom:.6rem">
+    <h2 style="margin:0">Frame from the video</h2>
+    <span class="muted" id="frame-time"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button type="button" class="btn secondary" id="frame-next">Another frame</button>
+  </div>
+  <div class="frame-wrap">
+    <img id="frame-img" alt="Frame from the video" src="{% url 'intake:frame' preview_video.pk %}?t={{ t0 }}">
+    {% if layout %}
+    <div class="frame-grid" style="grid-template-columns: repeat({{ layout.cols }}, 1fr); grid-template-rows: repeat({{ layout.rows }}, 1fr)">
+      {% for row in grid %}{% for f in row %}
+      <div class="frame-cell" id="ov-{{ f.instance.index }}" data-status="{{ f.instance.status }}">
+        <span>A{{ f.instance.index|stringformat:"02d" }}</span>
+      </div>
+      {% endfor %}{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% if layout %}<p class="help">The grid shows the arena numbering (A01 top-left, row by row). It is drawn evenly over the image, so it shows where each arena is, not its exact outline.</p>{% endif %}
+</div>
+<script>
+(() => {
+  const url = "{% url 'intake:frame' preview_video.pk %}", duration = {{ duration|floatformat:"1"|default:"0" }};
+  const img = document.getElementById("frame-img"), label = document.getElementById("frame-time");
+  const fmt = s => { s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  const show = t => { img.src = `${url}?t=${t.toFixed(1)}`; label.textContent = `at ${fmt(t)} of ${fmt(duration)}  (${t.toFixed(1)} s)`; };
+  document.getElementById("frame-next").addEventListener("click", () => show(duration * (0.05 + 0.9 * Math.random())));
+  show({{ t0 }});
+  document.addEventListener("change", e => {          // arena status selects are further down the page
+    if (!e.target.matches("select[data-arena]")) return;
+    const cell = document.getElementById("ov-" + e.target.dataset.arena);
+    if (cell) cell.dataset.status = e.target.value;
+  });
+})();
+</script>

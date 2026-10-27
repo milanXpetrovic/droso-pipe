@@ -11,6 +11,7 @@
   </div>
 </div>
 {% for w in warnings %}<div class="msg warning">{{ w }}</div>{% endfor %}
+{% if preview_video %}{% include "intake/_preview.html" %}{% endif %}
 <form method="post">
   {% csrf_token %}
   {{ form.non_field_errors }}

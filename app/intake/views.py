@@ -1,4 +1,9 @@
+import random
+from pathlib import Path
+
+from django.conf import settings
 from django.contrib import messages
+from django.http import FileResponse, Http404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
@@ -10,7 +15,21 @@ from domain.models import Arena, FlyGroup, Recording
 
 from .forms import ArenaFormSet, FlyGroupFormSet, RegisterForm
 from .models import IncomingVideo
+from .preview import frame_jpeg, video_path
 from .scanner import scan
+
+
+def preview_context(video: IncomingVideo | None) -> dict:
+    """Duration and a starting time (middle of the video) for the frame preview."""
+    if video is None:
+        return {}
+    try:
+        duration = video.ensure_duration()
+    except (OSError, ValueError):
+        duration = None
+    if not duration:
+        return {}
+    return {"preview_video": video, "duration": duration, "t0": round(duration / 2, 1)}
 
 operator_required = [login_required, permission_required("domain.add_recording", raise_exception=True)]
 COPY_FROM_LAST = ["experiment", "protocol", "layout", "condition", "sex", "n_flies", "cross_date", "sorting_date",
@@ -80,7 +99,8 @@ def register(request, pk):
                             started_from_file=video.started_at)
         if last:
             messages.info(request, f"Fields copied from the last recording on {video.rig} ({last.code}).")
-    return render(request, "intake/register.html", {"video": video, "form": form, "warnings": warnings})
+    return render(request, "intake/register.html",
+                  {"video": video, "form": form, "warnings": warnings, **preview_context(video)})
 
 
 @operator_view
@@ -106,8 +126,29 @@ def arenas(request, code):
     for form in arena_fs.forms:
         r, c = layout.position(form.instance.index)
         grid[r - 1][c - 1] = form
+    video = getattr(recording, "incoming_video", None)
     return render(request, "intake/arenas.html",
-                  {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid})
+                  {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid,
+                   **preview_context(video)})
+
+
+@operator_view
+def frame(request, pk):
+    """JPEG of one frame; ?t=seconds, or a random time if t is missing."""
+    video = get_object_or_404(IncomingVideo, pk=pk)
+    duration = video.ensure_duration()
+    if not duration:
+        raise Http404("Cannot read this video.")
+    try:
+        t = float(request.GET["t"])
+    except (KeyError, ValueError):
+        t = random.uniform(0.05, 0.95) * duration
+    t = round(min(max(t, 0.0), max(duration - 0.5, 0.0)), 1)
+    cache = Path(settings.MEDIA_ROOT) / "previews" / str(video.pk)
+    path = frame_jpeg(video_path(video.rel_path), t, cache)
+    response = FileResponse(open(path, "rb"), content_type="image/jpeg")
+    response["Cache-Control"] = "private, max-age=86400"
+    return response
 
 
 @operator_view

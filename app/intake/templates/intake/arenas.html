@@ -2,6 +2,7 @@
 {% block content %}
 <h1>Arenas of <span class="mono">{{ recording.code }}</span></h1>
 <p class="muted">{{ recording.layout }} · {{ recording.condition }} · {{ recording.get_sex_display }}{% if recording.n_flies %} · {{ recording.n_flies }} flies per arena{% endif %}</p>
+{% if preview_video %}{% with layout=recording.layout %}{% include "intake/_preview.html" %}{% endwith %}{% endif %}
 <form method="post">
   {% csrf_token %}
   {{ arena_fs.management_form }}{{ group_fs.management_form }}
@@ -13,7 +14,10 @@
       <div class="arena">
         <h3>A{{ f.instance.index|stringformat:"02d" }}</h3>
         {{ f.id }}
-        <label>Status</label>{{ f.status }}
+        <label>Status</label>
+        <select name="{{ f.status.html_name }}" id="{{ f.status.id_for_label }}" data-arena="{{ f.instance.index }}">
+          {% for value, text in f.fields.status.choices %}<option value="{{ value }}"{% if f.status.value == value %} selected{% endif %}>{{ text }}</option>{% endfor %}
+        </select>
         <label style="margin-top:.4rem">Reason</label>{{ f.exclusion_reason }}
         <div class="grid" style="grid-template-columns:1fr 1fr; gap:.4rem; margin-top:.4rem">
           <div><label>Window start s</label>{{ f.window_start_s }}</div>
