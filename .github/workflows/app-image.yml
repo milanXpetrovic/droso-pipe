@@ -13,6 +13,17 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: droso
+          POSTGRES_USER: droso
+          POSTGRES_PASSWORD: droso
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U droso"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -20,8 +31,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run tests
+      - name: Run tests (Postgres, as on the NAS)
         working-directory: app
+        env:
+          POSTGRES_DB: droso
+          POSTGRES_USER: droso
+          POSTGRES_PASSWORD: droso
+          POSTGRES_HOST: localhost
         run: |
           pip install -r requirements.txt
           python manage.py test domain intake core
