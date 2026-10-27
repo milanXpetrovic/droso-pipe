@@ -13,6 +13,21 @@
   {% for w in raw.warnings %}<div class="msg warning" style="margin:.6rem 0 0">{{ w }}</div>{% endfor %}
 </div>
 {% endif %}
+{% if runs %}
+<div class="card">
+  <h2 style="margin-top:0">Processing</h2>
+  <table>
+    <tr><th>Step</th><th>Status</th><th>Worker</th><th>Results</th></tr>
+    {% for r in runs %}
+    <tr><td>{{ r.tool }}</td>
+        <td>{{ r.get_status_display }}{% if r.error %}<div class="msg error" style="margin:.3rem 0 0">{{ r.error }}</div>{% endif %}</td>
+        <td>{{ r.worker|default:"—" }}</td>
+        <td>{% for a in r.made %}<div class="mono">{{ a.arena.code|default:a.rel_path }} · {{ a.meta.n_frames }} frames{% if a.warnings %} <span class="badge" title="{{ a.warnings|join:' ' }}">warning</span>{% endif %}</div>{% empty %}<span class="muted">—</span>{% endfor %}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="help">Changing arena windows or validity after a crop is done does not redo it yet; that comes with stale-result tracking.</p>
+</div>
+{% endif %}
 {% if preview_video %}{% with layout=recording.layout %}{% include "intake/_preview.html" %}{% endwith %}{% endif %}
 <form method="post">
   {% csrf_token %}

@@ -414,4 +414,4 @@ class IngestTests(PreviewBase):
         self.registered()
         out = StringIO()
         call_command("ingest", stdout=out)
-        self.assertIn("Ingested 1", out.getvalue())
+        self.assertIn("ingested: 1", out.getvalue())

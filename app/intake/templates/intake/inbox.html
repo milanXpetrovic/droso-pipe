@@ -35,7 +35,7 @@
 <div class="card">
 {% if done %}
 <table>
-  <tr><th>Recording</th><th>Rig</th><th>File</th><th>Storage</th><th></th></tr>
+  <tr><th>Recording</th><th>Rig</th><th>File</th><th>Storage</th><th>Processing</th><th></th></tr>
   {% for v in done %}
   <tr><td class="mono">{{ v.recording.code }}</td><td>{{ v.rig }}</td><td class="mono">{{ v.file_name }}</td>
       <td>
@@ -48,7 +48,8 @@
           {% if v.gave_up %}<form method="post" action="{% url 'intake:retry' v.pk %}" style="margin-top:.3rem">{% csrf_token %}<button class="btn secondary" type="submit">Try again</button></form>{% endif %}
         {% else %}<span class="muted">waiting for ingest</span>{% endif %}
       </td>
-      <td><a href="{% url 'intake:arenas' v.recording.code %}">arenas</a></td></tr>
+      <td>{% for r in v.runs %}<div>{{ r.tool.code }}: {% if r.status == "done" %}✓{% elif r.status == "failed" %}<span class="badge" title="{{ r.error }}">failed</span>{% elif r.status == "running" %}running on {{ r.worker }}{% else %}{{ r.get_status_display|lower }}{% endif %}</div>{% empty %}<span class="muted">—</span>{% endfor %}</td>
+      <td><a href="{% url 'intake:arenas' v.recording.code %}">details</a></td></tr>
   {% endfor %}
 </table>
 {% else %}<p class="muted">Nothing yet.</p>{% endif %}

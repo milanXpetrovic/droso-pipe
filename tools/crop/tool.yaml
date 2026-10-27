@@ -1,0 +1,14 @@
+code: crop
+version: 1.0.0
+description: >
+  Cut every valid arena out of the raw video along the layout grid (A01 top-left, row by row),
+  within each arena's analysis window. One decode of the source, one encode per arena.
+inputs:
+  video: raw_video/1
+outputs:
+  "A<nn>": crop_video/1
+params:
+  arenas: "[{index, code, crop_px: [x, y, w, h], window_s: [start, end]}]  (filled in by the server)"
+  encoder: "{codec, crf, preset, pix_fmt}"
+run: python crop.py --inputs {inputs} --params {params} --out {out}
+requires: Python 3.10+, ffmpeg (from the imageio-ffmpeg package or on PATH)

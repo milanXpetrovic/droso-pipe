@@ -11,8 +11,6 @@ Steps (any failure leaves the source untouched and records the error):
   7. only then delete the source from incoming/
 """
 
-import hashlib
-import json
 import os
 import socket
 from pathlib import Path, PurePosixPath
@@ -23,13 +21,13 @@ from django.db import transaction
 from core.formats import RAW_VIDEO, asset_type, validate_raw_video
 from core.models import Asset, Run, Tool
 from core.sidecar import recording_sidecar
+from core.storage import copy_with_sha256, sha256_of, write_json  # noqa: F401
 
 from .models import IncomingVideo
 from .preview import count_frames, probe, video_path
 
 VERSION = "1.0.0"
 MAX_ATTEMPTS = 3
-CHUNK = 8 * 1024 * 1024
 
 
 class IngestError(Exception):
@@ -47,33 +45,6 @@ def raw_dir(recording) -> PurePosixPath:
     import datetime as dt
     t = recording.started_at.astimezone(dt.timezone.utc)
     return PurePosixPath("raw", f"{t:%Y}", f"{t:%m}", recording.code)
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        while chunk := f.read(CHUNK):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def copy_with_sha256(src: Path, dst: Path) -> tuple[str, int]:
-    h, size = hashlib.sha256(), 0
-    with open(src, "rb") as fi, open(dst, "wb") as fo:
-        while chunk := fi.read(CHUNK):
-            h.update(chunk)
-            fo.write(chunk)
-            size += len(chunk)
-        fo.flush()
-        os.fsync(fo.fileno())
-    return h.hexdigest(), size
-
-
-def write_json(path: Path, data: dict):
-    tmp = path.with_name(f".{path.name}.part")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-    tmp.chmod(0o440)
-    os.replace(tmp, path)
 
 
 def claim_next() -> IncomingVideo | None:
@@ -149,6 +120,8 @@ def ingest_one(video: IncomingVideo) -> Asset | None:
             video.status, video.ingest_error = IncomingVideo.Status.INGESTED, ""
             video.save(update_fields=["status", "ingest_error"])
             run.finish(log="\n".join(log))
+        from core.rules import plan_runs
+        plan_runs()                                # e.g. the crop run for this video
     except Exception as e:  # noqa: BLE001 - every failure must be recorded, never lost
         part.unlink(missing_ok=True)
         if placed and not Asset.objects.filter(rel_path=str(rel_dir / dest.name)).exists():

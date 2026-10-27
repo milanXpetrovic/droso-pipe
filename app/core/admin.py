@@ -1,6 +1,28 @@
 from django.contrib import admin
 
-from .models import Asset, AssetType, Run, Tool
+from django.contrib import messages
+
+from .models import Asset, AssetType, Run, Tool, Worker
+
+
+@admin.register(Worker)
+class WorkerAdmin(admin.ModelAdmin):
+    list_display = ("name", "enabled", "tools", "last_seen_at")
+    readonly_fields = ("last_seen_at",)
+    actions = ["issue_token"]
+
+    def save_model(self, request, obj, form, change):
+        if not obj.token_hash:
+            token = obj.new_token()
+            messages.warning(request, f"Token for {obj.name} (shown only now, put it in the worker config): {token}")
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="Issue a new token (the old one stops working)")
+    def issue_token(self, request, queryset):
+        for w in queryset:
+            token = w.new_token()
+            w.save(update_fields=["token_hash"])
+            messages.warning(request, f"New token for {w.name}: {token}")
 
 
 @admin.register(AssetType)
@@ -24,11 +46,18 @@ class OutputInline(admin.TabularInline):
 
 @admin.register(Run)
 class RunAdmin(admin.ModelAdmin):
-    list_display = ("pk", "tool", "status", "recording", "arena", "worker", "created_at", "finished_at")
+    list_display = ("pk", "tool", "status", "recording", "arena", "worker", "attempts", "created_at", "finished_at")
     list_filter = ("status", "tool")
     search_fields = ("recording__code", "error")
     readonly_fields = ("tool", "params", "inputs", "recording", "arena", "worker", "created_at", "started_at",
-                       "finished_at", "log", "error")
+                       "heartbeat_at", "finished_at", "attempts", "result", "log", "error")
+    actions = ["requeue"]
+
+    @admin.action(description="Run again (back to pending)")
+    def requeue(self, request, queryset):
+        n = queryset.filter(status__in=[Run.Status.FAILED, Run.Status.CANCELLED]).update(
+            status=Run.Status.PENDING, worker="", error="", attempts=0)
+        messages.info(request, f"{n} run(s) back in the queue.")
     inlines = [OutputInline]
 
 

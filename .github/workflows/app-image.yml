@@ -24,7 +24,7 @@ jobs:
         working-directory: app
         run: |
           pip install -r requirements.txt
-          python manage.py test domain
+          python manage.py test domain intake core
 
       - name: Lowercase owner (GHCR needs lowercase names)
         run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"

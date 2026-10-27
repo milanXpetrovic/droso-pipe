@@ -1,0 +1,21 @@
+# Copy to worker.toml (not into git: it holds the token) and adjust.
+name = "rig1-win"
+server = "http://10.11.48.18:8080"
+token = "PASTE_TOKEN_FROM_ADMIN"
+scratch = 'C:\w'                       # short local path for temporary files
+poll_seconds = 30
+
+# Recording always wins: no work while these run (process names), and only in these hours.
+pause_while_running = ["Basler Video Recording Software.exe", "pylon Viewer.exe"]
+active_hours = "18:00-07:00"           # remove the line to allow any time
+
+[storage]
+mode = "path"                          # read raw/ and write staging/ directly on the share
+root = '\\lab-nas\videos'              # a server name different from the one Z: uses (see README)
+# On milky, without a mount:
+# mode = "rclone"
+# remote = "nas-worker:videos"
+# rclone = "/home/milky/bin/rclone"
+
+[tools."crop@1.0.0"]
+command = ["python", 'C:\droso-pipe\tools\crop\crop.py']

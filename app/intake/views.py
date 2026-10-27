@@ -61,6 +61,7 @@ def inbox(request):
                 .select_related("rig", "recording").order_by("-first_seen_at")[:30])
     for v in done:
         v.raw = v.recording.assets.filter(type__code="raw_video").first() if v.status == S.INGESTED else None
+        v.runs = list(v.recording.runs.exclude(tool__code="ingest").select_related("tool").order_by("created_at"))
         v.gave_up = v.status == S.REGISTERED and v.ingest_attempts >= MAX_ATTEMPTS
     return render(request, "intake/inbox.html", {"pending": pending, "done": done})
 
@@ -144,8 +145,11 @@ def arenas(request, code):
         r, c = layout.position(form.instance.index)
         grid[r - 1][c - 1] = form
     raw = recording.assets.filter(type__code="raw_video").first()
+    runs = list(recording.runs.exclude(tool__code="ingest").select_related("tool").order_by("created_at"))
+    for r in runs:
+        r.made = list(r.outputs.select_related("arena").order_by("arena__index"))
     return render(request, "intake/arenas.html",
-                  {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid, "raw": raw,
+                  {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid, "raw": raw, "runs": runs,
                    "protocol_duration": recording.protocol.duration_s if recording.protocol else None, **preview})
 
 

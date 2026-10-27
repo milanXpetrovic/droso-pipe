@@ -8,6 +8,9 @@ Rules
   - formats and tools are versioned; a new meaning is a new version, never an edit
 """
 
+import hashlib
+import secrets
+
 from django.db import models
 from django.utils import timezone
 
@@ -46,12 +49,37 @@ class Tool(models.Model):
         return f"{self.code}@{self.version}"
 
 
+class Worker(models.Model):
+    """A machine that runs tools (Rig 1 PC, milky, ...). Authenticates with a token; only its hash is stored."""
+
+    name = models.CharField(max_length=64, unique=True)
+    token_hash = models.CharField(max_length=64, editable=False)
+    tools = models.JSONField(default=list, blank=True, help_text='Tools it may run, e.g. ["crop@1.0.0"].')
+    enabled = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def new_token(self) -> str:
+        """Set and return a new token. It is shown once; the database keeps only its hash."""
+        token = secrets.token_urlsafe(32)
+        self.token_hash = self.hash_token(token)
+        return token
+
+
 class Run(models.Model):
     """One execution of a tool on concrete inputs with concrete parameters."""
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         RUNNING = "running", "Running"
+        COMMITTING = "committing", "Checking and storing results"
         DONE = "done", "Done"
         FAILED = "failed", "Failed"
         CANCELLED = "cancelled", "Cancelled"
@@ -65,7 +93,10 @@ class Run(models.Model):
     worker = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     started_at = models.DateTimeField(null=True, blank=True)
+    heartbeat_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    result = models.JSONField(default=dict, blank=True, help_text="What the worker reported: staged files and meta.")
     log = models.TextField(blank=True)
     error = models.TextField(blank=True)
 
@@ -77,9 +108,14 @@ class Run(models.Model):
         target = self.arena or self.recording or "—"
         return f"{self.tool} on {target} [{self.status}]"
 
+    @property
+    def staging_rel(self) -> str:
+        return f"staging/run-{self.pk}"
+
     def start(self, worker: str = ""):
-        self.status, self.worker, self.started_at = self.Status.RUNNING, worker, timezone.now()
-        self.save(update_fields=["status", "worker", "started_at"])
+        now = timezone.now()
+        self.status, self.worker, self.started_at, self.heartbeat_at = self.Status.RUNNING, worker, now, now
+        self.save(update_fields=["status", "worker", "started_at", "heartbeat_at"])
 
     def finish(self, log: str = ""):
         self.status, self.finished_at, self.log = self.Status.DONE, timezone.now(), log

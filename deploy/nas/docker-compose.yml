@@ -2,7 +2,7 @@
 # Replace every CHANGE_ME. The DB password must stay the same as the one the database was created with.
 
 x-django: &django
-  image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.7.0
+  image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.8.0
   restart: unless-stopped
   user: "3002:3003"                         # pipeline
   group_add: ["3000", "3001", "3002"]       # lab, labdata, worker
@@ -45,12 +45,12 @@ services:
     ports:
       - "8080:8000"
 
-  ingest:                                   # copies registered videos from incoming/ to raw/
+  keeper:                                   # ingest to raw/, plan runs, store worker results
     <<: *django
     depends_on:
       db:
         condition: service_healthy
-    entrypoint: ["python", "manage.py", "ingest", "--loop"]
+    entrypoint: ["python", "manage.py", "keeper", "--loop"]
     volumes:
       - /mnt/lab/videos:/data/videos
 
