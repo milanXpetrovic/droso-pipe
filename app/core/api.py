@@ -50,7 +50,7 @@ def claim(request, worker, body):
     if not offered:
         return HttpResponse(status=204)
     with transaction.atomic():
-        candidates = (Run.objects.select_for_update(skip_locked=True).select_related("tool", "recording")
+        candidates = (Run.objects.select_for_update(skip_locked=True, of=("self",)).select_related("tool", "recording")
                       .filter(status=Run.Status.PENDING).order_by("created_at"))
         run = next((r for r in candidates if str(r.tool) in offered), None)
         if run is None:
