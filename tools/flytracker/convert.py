@@ -63,10 +63,13 @@ def load_struct(path: Path, name: str) -> dict:
 
 
 def calibration_info(path: Path) -> dict:
+    """Works for circle calibrations (centroids, r) and full-frame ones (no circle at all)."""
     import scipy.io as sio
     c = sio.loadmat(path, squeeze_me=True, struct_as_record=False)["calib"]
-    centre = np.atleast_1d(c.centroids).astype(float).tolist()
-    return {"ppm": float(c.PPM), "arena_r_px": float(c.r) if np.size(c.r) else None,
+    fields = set(c._fieldnames)
+    centre = np.atleast_1d(c.centroids).astype(float).tolist() if "centroids" in fields else []
+    r = getattr(c, "r", None)
+    return {"ppm": float(c.PPM), "arena_r_px": float(r) if r is not None and np.size(r) else None,
             "arena_centre_px": [centre[1], centre[0]] if len(centre) == 2 else None,   # FlyTracker stores (y, x)
             "fps": float(c.FPS), "n_flies": int(c.n_flies), "auto_detect": int(c.auto_detect)}
 

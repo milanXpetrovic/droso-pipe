@@ -11,6 +11,7 @@ A01-trajectories.parquet and outputs.json.
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -23,10 +24,24 @@ from convert import calibration_info, to_table, write_parquet  # noqa: E402
 PPM_TOLERANCE = 0.05
 
 
+def physical_cores() -> int:
+    """MATLAB's local pool allows as many workers as PHYSICAL cores; os.cpu_count() counts logical ones."""
+    try:
+        import psutil
+        n = psutil.cpu_count(logical=False)
+        if n:
+            return n
+    except ImportError:
+        pass
+    return max(1, (os.cpu_count() or 2) // 2)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--matlab", default="matlab")
     ap.add_argument("--flytracker", required=True, help="folder with FlyTracker's modpath.m")
+    ap.add_argument("--cores", type=int, default=max(1, physical_cores() - 2),
+                    help="CPU cores for FlyTracker on THIS machine (default: physical cores minus two)")
     ap.add_argument("--inputs", required=True)
     ap.add_argument("--params", required=True)
     ap.add_argument("--out", required=True)
@@ -46,8 +61,9 @@ def main():
         shutil.copyfile(video["path"], local_video)
         local_calib = work / "template-calibration.mat"
         shutil.copyfile(template["path"], local_calib)
+        options = {**params["options"], "num_cores": args.cores}
         job = {"flytracker_dir": args.flytracker, "video": str(local_video), "calibration": str(local_calib),
-               "out_dir": str(work / "result"), "options": params["options"]}
+               "out_dir": str(work / "result"), "options": options}
         job_file = work / "job.json"
         job_file.write_text(json.dumps(job, indent=2))
         here = str(Path(__file__).parent).replace("'", "''")
@@ -76,7 +92,8 @@ def main():
                 shutil.copyfile(f, out / f.name)
 
         arena = params["arena"]
-        meta = {**summary, "calibration": calib, "mode": params["mode"], "tool_warnings": warnings}
+        meta = {**summary, "calibration": calib, "mode": params["mode"], "cores": args.cores,
+                "tool_warnings": warnings}
         outputs = [{"name": f"{name}-trajectories", "type": "trajectories/1", "file": f"{name}-trajectories.parquet",
                     "arena": arena, "meta": meta},
                    {"name": f"{name}-track", "type": "flytracker_track/1", "file": track.name, "arena": arena,

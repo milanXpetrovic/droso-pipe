@@ -55,7 +55,9 @@ def flytracker_params(run) -> dict:
     template = TrackerTemplate.objects.select_related("asset", "layout").get(asset__in=run.inputs.all())
     arena, layout = crop.arena, run.recording.layout
     n_flies = sum(g.n_flies or 0 for g in arena.fly_groups.all()) or None
-    options = {"num_cores": template.num_cores, "num_chunks": template.num_cores * 2, "isdisplay": False,
+    # num_cores is the worker's business (its own machine); chunking follows video length only (granularity),
+    # so the result does not depend on which worker tracked it.
+    options = {"granularity": 10000, "isdisplay": False,
                "save_xls": False, "save_JAABA": False, "save_seg": False, "n_flies": n_flies,
                "min_fractional_arena_size": template.min_fractional_arena_size,
                "max_fractional_arena_size": template.max_fractional_arena_size}

@@ -178,7 +178,6 @@ class TrackerTemplate(models.Model):
     active = models.BooleanField(default=True, help_text="New videos of this layout are tracked with the active one.")
     min_fractional_arena_size = models.FloatField(default=0.9)
     max_fractional_arena_size = models.FloatField(default=1.1)
-    num_cores = models.PositiveSmallIntegerField(default=8)
     warnings = models.JSONField(default=list, blank=True, editable=False)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now, editable=False)

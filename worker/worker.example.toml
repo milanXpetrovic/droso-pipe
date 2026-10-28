@@ -23,4 +23,5 @@ command = ["python", 'C:\droso-pipe\tools\crop\crop.py']
 [tools."flytracker@1.0.0"]
 command = ["python", 'C:\droso-pipe\tools\flytracker\track.py',
            "--matlab", 'C:\Program Files\MATLAB\R2023b\bin\matlab.exe',
-           "--flytracker", 'C:\FlyTracker']
+           "--flytracker", 'C:\FlyTracker',
+           "--cores", "14"]                 # this machine's cores minus two; leave out for automatic

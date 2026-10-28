@@ -19,7 +19,7 @@ class TrackerTemplateForm(forms.ModelForm):
     class Meta:
         model = TrackerTemplate
         fields = ["name", "layout", "mode", "active", "calibration_file", "min_fractional_arena_size",
-                  "max_fractional_arena_size", "num_cores", "notes"]
+                  "max_fractional_arena_size", "notes"]
 
     def clean(self):
         data = super().clean()

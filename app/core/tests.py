@@ -258,10 +258,14 @@ print("fake FlyTracker done")
 """
 
 
-def calibration_file(ppm=10.0, r=300.0, centre_yx=(350, 350), size=(700, 700)) -> bytes:
+def calibration_file(ppm=10.0, r=300.0, centre_yx=(350, 350), size=(700, 700), circle=True) -> bytes:
+    """circle=False: like a full-frame calibration, which has no centroids and no r at all."""
     path = Path(tempfile.mkdtemp()) / "calibration.mat"
-    sio.savemat(path, {"calib": {"PPM": ppm, "r": r, "centroids": np.array(centre_yx), "mask": np.zeros(size[::-1]),
-                                 "FPS": 10.0, "n_flies": 12, "auto_detect": 1}})
+    calib = {"PPM": ppm, "mask": np.ones(size[::-1]), "FPS": 10.0, "n_flies": 12,
+             "auto_detect": 1 if circle else 0, "roi_type": 2 if circle else 1}
+    if circle:
+        calib.update({"r": r, "centroids": np.array(centre_yx)})
+    sio.savemat(path, {"calib": calib})
     return path.read_bytes()
 
 
@@ -273,7 +277,7 @@ class TemplateAdminTests(Store, TestCase):
     def upload(self, name, content, mode="circle"):
         return self.client.post("/admin/core/trackertemplate/add/", {
             "name": name, "layout": self.rec.layout.pk, "mode": mode, "active": "on",
-            "min_fractional_arena_size": 0.9, "max_fractional_arena_size": 1.1, "num_cores": 8, "notes": "",
+            "min_fractional_arena_size": 0.9, "max_fractional_arena_size": 1.1, "notes": "",
             "calibration_file": SimpleUploadedFile("calibration.mat", content)}, follow=True)
 
     def test_upload_stores_template_as_asset(self):
@@ -292,6 +296,16 @@ class TemplateAdminTests(Store, TestCase):
         t = TrackerTemplate.objects.get()
         self.assertTrue(any("outer border" in w for w in t.warnings))
         self.assertContains(r, "outer border")
+
+    def test_fullframe_template_has_no_circle(self):
+        self.upload("old", calibration_file(ppm=12.98, size=(2012, 1518), circle=False), mode="fullframe")
+        t = TrackerTemplate.objects.get()
+        self.assertEqual((t.mode, t.asset.meta["arena_r_px"], t.asset.meta["ppm"], t.warnings),
+                         ("fullframe", None, 12.98, []))
+
+    def test_fullframe_calibration_refused_for_circle_mode_warning(self):
+        self.upload("wrong", calibration_file(circle=False), mode="circle")
+        self.assertTrue(any("no circular arena" in w for w in TrackerTemplate.objects.get().warnings))
 
     def test_not_a_calibration_file(self):
         self.upload("bad", b"not a mat file")
@@ -313,6 +327,12 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         tmpl_rel = "support/flytracker/templates/t.mat"
         (self.root / tmpl_rel).parent.mkdir(parents=True)
         (self.root / tmpl_rel).write_bytes(calibration_file(ppm=10.0, r=300.0))
+        old_rel = "support/flytracker/templates/old.mat"
+        (self.root / old_rel).write_bytes(calibration_file(ppm=10.0, circle=False))      # like the real old-setup file
+        self.old_template_asset = Asset.objects.create(
+            type=asset_type(("flytracker_calibration", 1)), rel_path=old_rel, sha256="1" * 64,
+            size_bytes=(self.root / old_rel).stat().st_size, meta={"ppm": 10.0, "arena_r_px": None},
+            produced_by=tmpl_run)
         self.template_asset = Asset.objects.create(
             type=asset_type(("flytracker_calibration", 1)), rel_path=tmpl_rel, sha256="0" * 64,
             size_bytes=(self.root / tmpl_rel).stat().st_size, meta={"ppm": 10.0, "arena_r_px": 300.0},
@@ -333,7 +353,7 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
 
     def worker_cfg(self, **extra):
         cmd = [sys.executable, str(REPO / "tools" / "flytracker" / "track.py"), "--matlab", str(self.fake_matlab),
-               "--flytracker", self.tmp.name]
+               "--flytracker", self.tmp.name, "--cores", "3"]
         return {"name": "rig1-win", "server": self.live_server_url, "token": self.token,
                 "scratch": str(Path(self.tmp.name) / "scratch"), "tools": {"flytracker@1.0.0": {"command": cmd}},
                 "storage": {"mode": "path", "root": str(self.root)}, **extra}
@@ -365,6 +385,9 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         self.assertEqual((p["mode"], p["n_flies"], p["options"]["arena_r_mm"], p["options"]["force_arena_calib"]),
                          ("circle", 5, 30.0, True))
         self.assertEqual((p["fps"], p["start_frame"], p["expected_ppm"]), (10.0, 100, 10.0))
+        self.assertNotIn("num_cores", p["options"])                            # the worker decides
+        self.assertNotIn("num_chunks", p["options"])                           # chunks follow video length only
+        self.assertEqual(p["options"]["granularity"], 10000)
 
         commit_pending()
         run.refresh_from_db()
@@ -374,6 +397,7 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         self.assertEqual(traj.meta["flags"][0], {"flies": [1, 2], "frames": [104, 107], "ambiguity": 0.5})
         self.assertEqual(traj.meta["frame_range"], [100, 119])                   # raw-video frames
         self.assertEqual(traj.warnings, [])
+        self.assertEqual(traj.meta["cores"], 3)                                 # recorded, from the worker
         import pandas as pd
         df = pd.read_parquet(self.root / traj.rel_path)
         self.assertAlmostEqual(float(df.loc[df.fly == 1, "x_mm"].iloc[0]), 10.0, places=4)   # 100 px / 10 px/mm
@@ -400,7 +424,8 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         self.assertTrue(any("Scale" in w for w in traj.warnings), traj.warnings)
 
     def test_fullframe_mode_keeps_template_scale(self):
-        TrackerTemplate.objects.create(name="old", layout=self.rec.layout, mode="fullframe", asset=self.template_asset)
+        TrackerTemplate.objects.create(name="old", layout=self.rec.layout, mode="fullframe",
+                                       asset=self.old_template_asset)
         plan_tracking()
         run = Run.objects.filter(tool__code="flytracker", arena__index=2).get()
         Run.objects.filter(tool__code="flytracker").exclude(pk=run.pk).update(status=Run.Status.CANCELLED)

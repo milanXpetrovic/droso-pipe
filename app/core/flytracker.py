@@ -6,13 +6,17 @@ import numpy as np
 
 
 def calibration_info(path: Path) -> dict:
+    """Works for circle calibrations (centroids, r) and full-frame ones (no circle at all)."""
     import scipy.io as sio
     c = sio.loadmat(path, squeeze_me=True, struct_as_record=False)["calib"]
-    centre = np.atleast_1d(c.centroids).astype(float).tolist()
-    mask = np.asarray(c.mask)
-    return {"ppm": float(c.PPM), "arena_r_px": float(c.r) if np.size(c.r) else None,
+    fields = set(c._fieldnames)
+    centre = np.atleast_1d(c.centroids).astype(float).tolist() if "centroids" in fields else []
+    r = getattr(c, "r", None)
+    mask = np.asarray(c.mask) if "mask" in fields else np.zeros((0, 0))
+    return {"ppm": float(c.PPM), "arena_r_px": float(r) if r is not None and np.size(r) else None,
             "arena_centre_px": [centre[1], centre[0]] if len(centre) == 2 else None,   # stored as (y, x)
-            "image_size_px": [int(mask.shape[1]), int(mask.shape[0])] if mask.ndim == 2 else None,
+            "image_size_px": [int(mask.shape[1]), int(mask.shape[0])] if mask.ndim == 2 and mask.size else None,
+            "roi_type": int(c.roi_type) if "roi_type" in fields else None,
             "fps": float(c.FPS), "n_flies": int(c.n_flies), "auto_detect": int(c.auto_detect)}
 
 
@@ -20,6 +24,9 @@ def template_warnings(info: dict, mode: str, arena_diameter_mm: float | None) ->
     """Problems worth knowing before a template is used for hundreds of videos."""
     warnings = []
     r, centre, size = info.get("arena_r_px"), info.get("arena_centre_px"), info.get("image_size_px")
+    if mode == "circle" and r is None:
+        warnings.append("This calibration has no circular arena, so it cannot be used in circle mode. "
+                        "Use full-frame mode, or calibrate with a circular arena.")
     if mode == "circle":
         if r and centre and size:
             x, y = centre
