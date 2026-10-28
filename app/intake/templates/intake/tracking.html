@@ -1,0 +1,25 @@
+{% extends "intake/base.html" %}
+{% block content %}
+<h1>Tracking results</h1>
+<p class="muted">Cleanest first. Flags are places where FlyTracker was unsure which fly is which (potential identity swaps).
+Few flags: review them in the visualizer. Many flags: better to track again with other parameters.</p>
+<div class="card">
+{% if rows %}
+<table>
+  <tr><th>Recording</th><th>Arena</th><th>Flies</th><th>Length</th><th>Flags</th><th>per min</th><th>Scale</th><th>Notes</th></tr>
+  {% for a in rows %}
+  <tr>
+    <td class="mono"><a href="{% url 'intake:arenas' a.recording.code %}">{{ a.recording.code }}</a></td>
+    <td class="mono">A{{ a.arena.index|stringformat:"02d" }}</td>
+    <td>{{ a.meta.n_flies }}{% if a.expected %} / {{ a.expected }}{% endif %}</td>
+    <td>{% widthratio a.meta.n_frames a.meta.fps 1 %} s</td>
+    <td><b>{{ a.meta.n_flags }}</b></td>
+    <td>{{ a.flags_per_min|default:"—" }}</td>
+    <td>{{ a.meta.calibration.ppm|floatformat:2 }} px/mm <span class="muted">({{ a.meta.mode }})</span></td>
+    <td>{% for w in a.warnings %}<div class="msg warning" style="margin:0 0 .2rem">{{ w }}</div>{% endfor %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Nothing tracked yet.</p>{% endif %}
+</div>
+{% endblock %}

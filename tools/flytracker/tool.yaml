@@ -1,0 +1,19 @@
+code: flytracker
+version: 1.0.0
+description: >
+  Track one arena with FlyTracker (https://github.com/kristinbranson/FlyTracker), headless,
+  then convert the result to trajectories/1.
+inputs:
+  video: crop_video/1
+  template: flytracker_calibration/1
+outputs:
+  "A<nn>-trajectories": trajectories/1
+  "A<nn>-track": flytracker_track/1         # native, needed for review in the visualizer
+  "A<nn>-feat": flytracker_feat/1
+  "A<nn>-calibration": flytracker_calibration/1   # only when the arena is re-detected per video
+params:
+  mode: "circle (arena found in every video, scale from the database diameter) | fullframe (old recordings)"
+  n_flies: from the database
+  options: FlyTracker core_tracker options
+run: python track.py --matlab <matlab> --flytracker <FlyTracker folder> --inputs {inputs} --params {params} --out {out}
+requires: MATLAB R2020b+ with Image Processing Toolbox, FlyTracker, Python 3.10+ with numpy, scipy, h5py, pandas, pyarrow

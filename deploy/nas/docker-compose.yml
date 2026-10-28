@@ -2,7 +2,7 @@
 # Replace every CHANGE_ME. The DB password must stay the same as the one the database was created with.
 
 x-django: &django
-  image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.8.0
+  image: ghcr.io/milanxpetrovic/droso-pipe-app:v0.9.0
   restart: unless-stopped
   user: "3002:3003"                         # pipeline
   group_add: ["3000", "3001", "3002"]       # lab, labdata, worker

@@ -19,3 +19,8 @@ root = '\\lab-nas\videos'              # a server name different from the one Z:
 
 [tools."crop@1.0.0"]
 command = ["python", 'C:\droso-pipe\tools\crop\crop.py']
+
+[tools."flytracker@1.0.0"]
+command = ["python", 'C:\droso-pipe\tools\flytracker\track.py',
+           "--matlab", 'C:\Program Files\MATLAB\R2023b\bin\matlab.exe',
+           "--flytracker", 'C:\FlyTracker']

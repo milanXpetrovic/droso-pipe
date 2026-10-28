@@ -14,7 +14,9 @@ import secrets
 from django.db import models
 from django.utils import timezone
 
-from domain.models import Arena, Recording
+from django.conf import settings
+
+from domain.models import Arena, ArenaLayout, Recording
 
 
 class AssetType(models.Model):
@@ -160,3 +162,33 @@ class Asset(models.Model):
             if old and any(old[f] != getattr(self, f) for f in self.IMMUTABLE):
                 raise ValueError("Assets are immutable: type, path, checksum and size cannot change.")
         super().save(*args, **kwargs)
+
+
+class TrackerTemplate(models.Model):
+    """A FlyTracker calibration made once per setup, used for every video of that layout."""
+
+    class Mode(models.TextChoices):
+        CIRCLE = "circle", "Circle: arena found in every video, scale from the layout diameter"
+        FULLFRAME = "fullframe", "Full frame: the whole crop is the arena (old recordings)"
+
+    name = models.CharField(max_length=64, unique=True)
+    layout = models.ForeignKey(ArenaLayout, on_delete=models.PROTECT, related_name="tracker_templates")
+    mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.CIRCLE)
+    asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name="+", editable=False)
+    active = models.BooleanField(default=True, help_text="New videos of this layout are tracked with the active one.")
+    min_fractional_arena_size = models.FloatField(default=0.9)
+    max_fractional_arena_size = models.FloatField(default=1.1)
+    num_cores = models.PositiveSmallIntegerField(default=8)
+    warnings = models.JSONField(default=list, blank=True, editable=False)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+", editable=False)
+
+    class Meta:
+        ordering = ["layout", "-created_at"]
+        constraints = [models.UniqueConstraint(fields=["layout"], condition=models.Q(active=True),
+                                               name="one_active_template_per_layout")]
+
+    def __str__(self):
+        return f"{self.name} ({self.layout})"

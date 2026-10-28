@@ -48,6 +48,7 @@
 <body>
 <header>
   <a href="{% url 'intake:inbox' %}">Inbox</a>
+  <a href="{% url 'intake:tracking' %}">Tracking</a>
   <a href="{% url 'admin:index' %}">Admin</a>
   <span class="spacer"></span>
   <span class="user">{{ request.user.get_username }}</span>

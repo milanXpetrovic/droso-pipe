@@ -145,11 +145,15 @@ def arenas(request, code):
         r, c = layout.position(form.instance.index)
         grid[r - 1][c - 1] = form
     raw = recording.assets.filter(type__code="raw_video").first()
+    from core.models import TrackerTemplate
+    no_template = (recording.assets.filter(type__code="crop_video").exists()
+                   and not TrackerTemplate.objects.filter(layout=recording.layout, active=True).exists())
     runs = list(recording.runs.exclude(tool__code="ingest").select_related("tool").order_by("created_at"))
     for r in runs:
         r.made = list(r.outputs.select_related("arena").order_by("arena__index"))
     return render(request, "intake/arenas.html",
                   {"recording": recording, "arena_fs": arena_fs, "group_fs": group_fs, "grid": grid, "raw": raw, "runs": runs,
+                   "no_template": no_template,
                    "protocol_duration": recording.protocol.duration_s if recording.protocol else None, **preview})
 
 
@@ -191,3 +195,16 @@ def retry_ingest(request, pk):
     video.save(update_fields=["ingest_attempts", "ingest_error"])
     messages.info(request, f"{video.file_name} will be ingested again.")
     return redirect("intake:inbox")
+
+
+@operator_view
+def tracking(request):
+    """All tracked arenas, cleanest first: what to review, and what to retrack with other parameters."""
+    from core.models import Asset
+    rows = list(Asset.objects.filter(type__code="trajectories").select_related("recording", "arena", "produced_by")
+                .order_by("recording__started_at", "arena__index"))
+    for a in rows:
+        a.flags_per_min = a.meta.get("flags_per_min")
+        a.expected = a.produced_by.params.get("n_flies")
+    rows.sort(key=lambda a: (a.flags_per_min is None, a.flags_per_min or 0))
+    return render(request, "intake/tracking.html", {"rows": rows})

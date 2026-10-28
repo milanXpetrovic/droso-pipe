@@ -16,7 +16,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .api import MAX_ATTEMPTS
-from .formats import CROP_VIDEO, SPECS, asset_type, validate_crop_video
+from .formats import CROP_VIDEO, SPECS, TRAJECTORIES, asset_type, validate_crop_video, validate_trajectories
 from .models import Asset, Run
 from .storage import copy_with_sha256, resolve, write_json
 from .video import count_frames, probe
@@ -97,14 +97,23 @@ def commit_run(run: Run) -> bool:
                 if file not in files:
                     raise CommitError(f"Output {file} was not uploaded.")
                 path = dest / file
-                meta = {**out.get("meta", {}), **probe(path), "n_frames": count_frames(path)}
+                meta = dict(out.get("meta", {}))
                 arena = rec.arenas.get(index=out["arena"]) if out.get("arena") else None
-                warnings = []
+                warnings = list(meta.pop("tool_warnings", []))
+                errors = []
                 if key == CROP_VIDEO:
-                    errors, warnings = validate_crop_video(meta, expected_frames(run.params, windows.get(out.get("arena"))),
-                                                           run.params.get("fps"))
-                    if errors:
-                        raise CommitError(f"{file}: " + "; ".join(errors))
+                    meta.update({**probe(path), "n_frames": count_frames(path)})
+                    errors, more = validate_crop_video(meta, expected_frames(run.params, windows.get(out.get("arena"))),
+                                                       run.params.get("fps"))
+                    warnings += more
+                elif key == TRAJECTORIES:
+                    errors, more, extra = validate_trajectories(path, run.params.get("fps"), run.params.get("n_flies"))
+                    warnings += more
+                    meta.update(extra)
+                elif path.stat().st_size == 0:
+                    errors = ["empty file"]
+                if errors:
+                    raise CommitError(f"{file}: " + "; ".join(errors))
                 assets.append(Asset.objects.create(
                     type=asset_type(key), rel_path=str(dest_rel / file), sha256=files[file]["sha256"],
                     size_bytes=files[file]["size_bytes"], meta=meta, warnings=warnings, recording=rec, arena=arena,

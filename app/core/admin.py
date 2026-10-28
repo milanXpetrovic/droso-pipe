@@ -1,8 +1,83 @@
 from django.contrib import admin
 
+import tempfile
+from pathlib import Path
+
+from django import forms
 from django.contrib import messages
 
-from .models import Asset, AssetType, Run, Tool, Worker
+from .flytracker import calibration_info, template_warnings
+from .formats import FT_CALIBRATION
+from .models import Asset, AssetType, Run, Tool, TrackerTemplate, Worker
+from .uploads import store_upload
+
+
+class TrackerTemplateForm(forms.ModelForm):
+    calibration_file = forms.FileField(required=False,
+                                       help_text="calibration.mat saved by the FlyTracker calibrator on one crop.")
+
+    class Meta:
+        model = TrackerTemplate
+        fields = ["name", "layout", "mode", "active", "calibration_file", "min_fractional_arena_size",
+                  "max_fractional_arena_size", "num_cores", "notes"]
+
+    def clean(self):
+        data = super().clean()
+        f = data.get("calibration_file")
+        if not self.instance.pk and not f:
+            raise forms.ValidationError("Upload the calibration file.")
+        if f:
+            with tempfile.NamedTemporaryFile(suffix=".mat") as tmp:
+                for chunk in f.chunks():
+                    tmp.write(chunk)
+                tmp.flush()
+                try:
+                    self.info = calibration_info(Path(tmp.name))
+                except Exception as e:  # noqa: BLE001
+                    raise forms.ValidationError(f"Not a FlyTracker calibration file: {e}")
+            f.seek(0)
+        return data
+
+
+@admin.register(TrackerTemplate)
+class TrackerTemplateAdmin(admin.ModelAdmin):
+    form = TrackerTemplateForm
+    list_display = ("name", "layout", "mode", "active", "scale", "has_warnings", "created_at")
+    list_filter = ("layout", "mode", "active")
+    readonly_fields = ("calibration", "warnings_text", "created_at", "created_by")
+
+    @admin.display(description="px/mm")
+    def scale(self, obj):
+        return f"{obj.asset.meta.get('ppm', 0):.2f}" if obj.pk else "—"
+
+    @admin.display(boolean=True, description="Warnings")
+    def has_warnings(self, obj):
+        return bool(obj.warnings)
+
+    @admin.display(description="Calibration")
+    def calibration(self, obj):
+        if not obj.pk:
+            return "—"
+        m = obj.asset.meta
+        return (f"{obj.asset.rel_path} · {m.get('ppm', 0):.2f} px/mm · radius {m.get('arena_r_px')} px · "
+                f"{m.get('n_flies')} flies · {m.get('fps')} fps")
+
+    @admin.display(description="Warnings")
+    def warnings_text(self, obj):
+        return " ".join(obj.warnings) if obj.warnings else "none"
+
+    def save_model(self, request, obj, form, change):
+        f = form.cleaned_data.get("calibration_file")
+        if f:
+            info = form.info
+            obj.warnings = template_warnings(info, obj.mode, obj.layout.arena_diameter_mm)
+            obj.asset = store_upload(f, "support/flytracker/templates", f"{obj.name}.mat", FT_CALIBRATION, info,
+                                     request.user, warnings=obj.warnings)
+            if not obj.created_by_id:
+                obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+        for w in obj.warnings:
+            messages.warning(request, w)
 
 
 @admin.register(Worker)

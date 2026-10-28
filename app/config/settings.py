@@ -9,6 +9,7 @@ Production (NAS, docker):   DJANGO_DEBUG=0, DJANGO_SECRET_KEY, POSTGRES_*, DJANG
 """
 
 import os
+import sys
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -111,6 +112,9 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
+
+if "test" in sys.argv:      # tests run with DEBUG off but without collectstatic
+    STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
