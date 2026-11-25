@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required, permission_required
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, Min, Prefetch, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
@@ -480,3 +481,25 @@ def settings_page(request):
     return render(request, "web/settings.html", {"layouts": layouts, "cameras": cameras, "conditions": conditions,
                                                  "people": people, "storage": storage})
 
+
+
+# --- Deleting a test recording -------------------------------------------------------------------
+
+@login_required
+@require_POST
+def recording_delete(request, code):
+    """Admins only, with the code typed as confirmation: for test recordings and uploads made by mistake."""
+    from core.removal import RemovalError, delete_recording
+    if not request.user.is_superuser:
+        raise PermissionDenied
+    rec = get_object_or_404(Recording, code=code)
+    if request.POST.get("confirm", "").strip() != rec.code:
+        messages.error(request, f"Type {rec.code} exactly to delete it.")
+        return redirect("web:recording", code=code)
+    try:
+        done = delete_recording(rec)
+    except RemovalError as e:
+        messages.error(request, str(e))
+        return redirect("web:recording", code=code)
+    messages.success(request, f"{code} deleted: the video, {done['files']} files and {done['jobs']} jobs.")
+    return redirect("web:recordings")

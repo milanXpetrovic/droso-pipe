@@ -311,3 +311,38 @@ class UploadArenasTests(PagesBase):
         self.client.post(url, {"index": 3})
         self.assertEqual(self.rec.arenas.get(index=3).status, Arena.Status.OK)      # locked once cut out
         self.assertContains(self.client.get(url), "already cut out")
+
+
+class DeleteRecordingTests(PagesBase):
+    def test_delete_test_recording(self):
+        from intake.models import IncomingVideo
+        self.template()
+        traj = self.track(self.crop(), arenas=(1, 2))
+        Review.objects.create(asset=traj[1], decision=Review.Decision.ACCEPTED)
+        IncomingVideo.objects.create(rel_path="incoming/rig1/x.mp4", rig=self.rec.rig, file_name="x.mp4", size_bytes=1,
+                                     mtime=self.rec.started_at, changed_at=self.rec.started_at, recording=self.rec,
+                                     status=IncomingVideo.Status.INGESTED)
+        url, code = reverse("web:recording_delete", args=[self.rec.code]), self.rec.code
+        raw_dir, derived = (self.root / self.raw.rel_path).parent, self.root / "derived" / code
+        self.assertEqual(self.client.post(url, {"confirm": code}).status_code, 403)        # operators cannot
+        self.assertNotContains(self.client.get(reverse("web:recording", args=[code])), "Delete this recording")
+
+        self.client.force_login(User.objects.create_superuser("milan", "", "x"))
+        self.assertContains(self.client.get(reverse("web:recording", args=[code])), "Delete this recording")
+        self.client.post(url, {"confirm": "wrong"})
+        self.assertTrue(type(self.rec).objects.filter(code=code).exists())                 # wrong code: nothing
+
+        busy = Run.objects.filter(tool__code="flytracker").first()
+        Run.objects.filter(pk=busy.pk).update(status=Run.Status.RUNNING, worker="rig1-win")
+        r = self.client.post(url, {"confirm": code}, follow=True)
+        self.assertContains(r, "rig1-win is working on this recording")
+        Run.objects.filter(pk=busy.pk).update(status=Run.Status.DONE)
+
+        r = self.client.post(url, {"confirm": code}, follow=True)
+        self.assertContains(r, f"{code} deleted")
+        self.assertFalse(type(self.rec).all_objects.filter(code=code).exists())
+        self.assertFalse(Asset.objects.filter(recording__isnull=False).exists())
+        self.assertFalse(Run.objects.exclude(tool__code="upload").exists())
+        self.assertFalse(Review.objects.exists() or IncomingVideo.objects.exists() or Arena.all_objects.exists())
+        self.assertFalse(raw_dir.exists() or derived.exists())
+        self.assertTrue(TrackerTemplate.objects.exists())                                  # set-up stays

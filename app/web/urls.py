@@ -6,6 +6,7 @@ app_name = "web"
 urlpatterns = [
     path("", views.recordings, name="recordings"),
     path("recordings/<str:code>/", views.recording, name="recording"),
+    path("recordings/<str:code>/delete/", views.recording_delete, name="recording_delete"),
     path("review/", views.review_next, name="review_next"),
     path("review/<int:pk>/", views.review_item, name="review_item"),
     path("review/<int:pk>/paths.svg", views.paths_svg, name="paths"),

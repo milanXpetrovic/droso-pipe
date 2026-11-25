@@ -115,4 +115,17 @@
   </table>
   </div>
 </details>
+
+{% if user.is_superuser %}
+<details class="card" style="border-color:var(--bad)">
+  <summary style="color:var(--bad)">Delete this recording</summary>
+  <p style="margin:10px 0">Only for test recordings and uploads made by mistake. The raw video, the arenas, all tracking results
+    and reviews are deleted permanently.</p>
+  <form method="post" action="{% url 'web:recording_delete' rec.code %}" style="display:flex; flex-wrap:wrap; gap:10px; align-items:end">
+    {% csrf_token %}
+    <div><label for="confirm">Type <b class="mono">{{ rec.code }}</b> to confirm</label><input id="confirm" name="confirm" autocomplete="off" style="width:260px"></div>
+    <button class="btn danger" type="submit">Delete permanently</button>
+  </form>
+</details>
+{% endif %}
 {% endblock %}
