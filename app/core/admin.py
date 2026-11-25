@@ -27,15 +27,26 @@ class TrackerTemplateForm(forms.ModelForm):
         if not self.instance.pk and not f:
             raise forms.ValidationError("Upload the calibration file.")
         if f:
-            with tempfile.NamedTemporaryFile(suffix=".mat") as tmp:
+            # closed before reading: Windows cannot open a temporary file a second time while it is open
+            with tempfile.NamedTemporaryFile(suffix=".mat", delete=False) as tmp:
                 for chunk in f.chunks():
                     tmp.write(chunk)
-                tmp.flush()
-                try:
-                    self.info = calibration_info(Path(tmp.name))
-                except Exception as e:  # noqa: BLE001
-                    raise forms.ValidationError(f"Not a FlyTracker calibration file: {e}")
+            try:
+                self.info = calibration_info(Path(tmp.name))
+            except Exception as e:  # noqa: BLE001
+                raise forms.ValidationError(f"Not a FlyTracker calibration file: {e}")
+            finally:
+                Path(tmp.name).unlink(missing_ok=True)
             f.seek(0)
+            # Refused, not just warned: either would make every tracking run of the layout fail.
+            if self.info.get("missing_params"):
+                raise forms.ValidationError(
+                    "This calibration was made with an old FlyTracker (1.0.5) and tracking with it fails. In MATLAB "
+                    "run restoredefaultpath; addpath('C:\\FlyTracker'); modpath; then calibrate again.")
+            if data.get("mode") == TrackerTemplate.Mode.CIRCLE and not self.info.get("arena_r_px"):
+                raise forms.ValidationError(
+                    "No circular arena was detected in this calibration (it was drawn by hand). For circle mode, "
+                    "calibrate with 'automatically detect chambers', circular, 'fixed' unticked.")
         return data
 
 

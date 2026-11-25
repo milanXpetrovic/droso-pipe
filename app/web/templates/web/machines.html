@@ -1,0 +1,70 @@
+{% extends "web/base.html" %}
+{% block title %}Machines · Droso pipeline{% endblock %}
+{% block style %}
+  .machines { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:16px; }
+  .machine { margin:0; border-top-width:5px; } .machine.run { border-top-color:var(--s-running); } .machine.check { border-top-color:var(--s-needs_you); }
+  .machine.ok { border-top-color:var(--s-done); } .machine.idle { border-top-color:var(--s-waiting); }
+  .now { padding:12px; border-radius:8px; background:var(--line2); margin:12px 0; font-size:14px; }
+  dl.kv { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:6px 14px; font-size:13px; } dl.kv dt { color:var(--muted); } dl.kv dd { margin:0; }
+  .problems { background:var(--bad-bg); border-color:transparent; } .problems h2 { color:var(--bad); }
+  .problem { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:10px 12px; background:var(--card); border-radius:8px; margin-top:8px; }
+{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Machines</h1>
+  <span class="muted">{{ n_pending }} job{{ n_pending|pluralize }} waiting · recording always comes first: a rig pauses while its camera software runs</span>
+</div>
+
+{% if problems %}
+<section class="card problems" aria-label="Problems">
+  <h2>Needs you · {{ problems|length }}</h2>
+  {% for r in problems %}
+  <div class="problem">
+    <div style="flex:1 1 420px">
+      <b>{{ r.word }} failed{% if r.recording %} · <a href="{% url 'web:recording' r.recording.code %}">{{ r.recording.code }}</a>{% endif %}{% if r.arena %} · A{{ r.arena.index|stringformat:"02d" }}{% endif %}</b>
+      <div class="help">{{ r.plain }}</div>
+    </div>
+    {% if perms.core.change_run %}
+    <form method="post" action="{% url 'web:run_retry' r.pk %}">{% csrf_token %}<button class="btn small" type="submit">Try again</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if not perms.core.change_run %}<p class="help" style="margin:10px 0 0">Tell the admin: only an admin can start these again.</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="machines" aria-label="Machines">
+  {% for m in workers %}
+  <article class="card machine {{ m.kind }}">
+    <div style="display:flex; align-items:center; gap:12px">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      <div style="flex:1"><b style="font-size:16px">{{ m.w.name }}</b>{% if m.w.notes %}<div class="help">{{ m.w.notes }}</div>{% endif %}</div>
+      <span class="chip {{ m.kind }}">{{ m.state }}</span>
+    </div>
+    <div class="now"><b>{{ m.doing }}</b>{% if m.detail %}<div class="help">{{ m.detail }}</div>{% endif %}</div>
+    <dl class="kv">
+      <dt>Can do</dt><dd>{{ m.tools }}</dd>
+      <dt>Last seen</dt><dd>{% if m.w.last_seen_at %}{{ m.w.last_seen_at|timesince }} ago{% else %}never{% endif %}</dd>
+      <dt>Last 7 days</dt><dd>{{ m.week }}</dd>
+    </dl>
+  </article>
+  {% empty %}
+  <div class="card"><p class="muted" style="margin:0">No machines yet. Add one in Admin → Workers and follow worker/README.md.</p></div>
+  {% endfor %}
+</section>
+
+<section class="card" aria-label="Queue">
+  <h2>Waiting for a machine</h2>
+  {% if queue %}
+  <div class="scroll"><table>
+    <thead><tr><th>Job</th><th>Recording</th><th>Waiting since</th></tr></thead>
+    <tbody>{% for q in queue %}
+      <tr><td><b>{{ q.word }}</b>{% if q.n > 1 %} · {{ q.n }} arenas{% endif %}</td>
+          <td>{% if q.recording__code %}<a class="mono" href="{% url 'web:recording' q.recording__code %}">{{ q.recording__code }}</a>{% else %}—{% endif %}</td>
+          <td>{{ q.since|date:"d.m. H:i" }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted" style="margin:0">Nothing waiting.</p>{% endif %}
+</section>
+<p class="help">Videos copied straight into incoming/ on the NAS (bulk import) appear in the <a href="{% url 'intake:inbox' %}">folder inbox</a>.</p>
+{% endblock %}

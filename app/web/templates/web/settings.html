@@ -1,0 +1,90 @@
+{% extends "web/base.html" %}
+{% load web_extras %}
+{% block title %}Settings · Droso pipeline{% endblock %}
+{% block style %}
+  .cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:16px; }
+  .cols .card { margin:0; }
+  .cam { padding:10px 12px; border:1px solid var(--line2); border-radius:8px; margin-bottom:10px; }
+  .usage { display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--line2); margin-bottom:10px; }
+  .usage span { display:block; height:14px; }
+  dl.kv { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:6px 14px; font-size:13px; } dl.kv dd { margin:0; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Settings</h1>
+  <span class="muted">Set up once. Everyone can see this page; changes are made by an admin{% if user.is_staff %} (you){% endif %}.</span>
+</div>
+
+<section class="card" aria-label="Arena layouts and tracking">
+  <div class="head" style="margin-bottom:10px">
+    <h2 style="margin:0">Arena layouts and tracking set-up</h2>
+    <span class="spacer"></span>
+    {% if user.is_staff %}<a class="btn small secondary" href="{% url 'admin:domain_arenalayout_add' %}">+ New layout</a>{% endif %}
+  </div>
+  <div class="scroll"><table style="min-width:820px">
+    <thead><tr><th>Layout</th><th>Arenas</th><th>Arena diameter</th><th>Tracking set-up</th><th><span class="sr">Action</span></th></tr></thead>
+    <tbody>
+    {% for x in layouts %}
+      <tr>
+        <td><b>{{ x.l.code }}</b></td>
+        <td>{{ x.l.n_arenas }}</td>
+        <td>{% if x.l.arena_diameter_mm %}{{ x.l.arena_diameter_mm|floatformat:"-1" }} mm{% else %}<span class="chip check">not set</span>{% endif %}</td>
+        <td><span class="chip {{ x.kind }}">{{ x.state }}</span>
+          {% if x.note %}<div class="help">{{ x.note }}</div>{% endif %}
+          {% for p in x.problems %}<div class="help" style="color:var(--bad)">{{ p }}</div>{% endfor %}
+          {% if x.waiting %}<div class="help">{{ x.waiting }} recording{{ x.waiting|pluralize }} cut into arenas and waiting for tracking.</div>{% endif %}</td>
+        <td style="text-align:right">{% if user.is_staff %}<a class="btn small{% if x.t and not x.problems %} secondary{% endif %}" href="{% url 'admin:core_trackertemplate_add' %}?layout={{ x.l.pk }}">{% if x.t %}Replace calibration{% else %}Add calibration{% endif %}</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="help" style="margin:10px 0 0">A calibration is made once per layout, in MATLAB on one arena crop, with the FlyTracker the workers use:
+    <span class="mono">restoredefaultpath; addpath('C:\FlyTracker'); modpath; calibrator(...)</span> — automatic detection, circular, “fixed” unticked.</p>
+</section>
+
+<div class="cols" style="margin-top:16px">
+  <section class="card" aria-label="Cameras and rigs">
+    <h2>Cameras and rigs</h2>
+    {% for x in cameras %}
+    <div class="cam">
+      <b>Camera {{ x.c.code }}</b> <span class="mono help">serial {{ x.c.serial|default:"—" }}</span>
+      <span class="help">· usually on {{ x.c.usual_rig|default:"—" }}</span>
+      <div style="display:flex; gap:8px; margin-top:6px; font-size:13px"><span class="chip {{ x.kind }}" style="padding:2px 6px"><span class="dot"></span></span><span>{{ x.check }}</span></div>
+    </div>
+    {% empty %}<p class="muted">No cameras yet.</p>{% endfor %}
+    {% if user.is_staff %}<a class="help" href="{% url 'admin:domain_camera_changelist' %}">Edit cameras and rigs in the admin</a>{% endif %}
+  </section>
+
+  <section class="card" aria-label="Conditions and genotypes">
+    <div class="head" style="margin-bottom:10px"><h2 style="margin:0">Conditions and genotypes</h2><span class="spacer"></span>
+      {% if user.is_staff %}<a class="btn small secondary" href="{% url 'admin:domain_condition_add' %}">+ Condition</a><a class="btn small secondary" href="{% url 'admin:domain_genotype_add' %}">+ Genotype</a>{% endif %}</div>
+    <table>
+      <thead><tr><th>Condition</th><th>Genotype</th><th>Recordings</th></tr></thead>
+      <tbody>{% for x in conditions %}<tr><td><b>{{ x.c.code }}</b>{% if x.c.description %}<div class="help">{{ x.c.description }}</div>{% endif %}</td><td>{{ x.c.genotype }}</td><td>{{ x.n }}</td></tr>{% endfor %}</tbody>
+    </table>
+    <p class="help" style="margin:10px 0 0">New conditions can also be added while entering the details of a video.</p>
+  </section>
+
+  <section class="card" aria-label="People">
+    <div class="head" style="margin-bottom:10px"><h2 style="margin:0">People</h2><span class="spacer"></span>
+      {% if user.is_staff %}<a class="btn small secondary" href="{% url 'admin:auth_user_add' %}">+ Add person</a>{% endif %}</div>
+    <table><tbody>{% for p in people %}<tr><td><b>{{ p.get_full_name|default:p.username }}</b></td><td class="help">{% if p.is_superuser %}admin{% else %}records and reviews{% endif %}</td></tr>{% endfor %}</tbody></table>
+  </section>
+
+  <section class="card" aria-label="Storage">
+    <h2>Storage on the NAS</h2>
+    {% if storage.disk %}
+    <div class="usage" role="img" aria-label="Disk use">
+      <span style="width:{{ storage.raw_pct }}%; background:var(--s-running)"></span><span style="width:{{ storage.crop_pct }}%; background:#8fb3e8"></span><span style="width:{{ storage.other_pct }}%; background:var(--s-done)"></span>
+    </div>
+    {% endif %}
+    <dl class="kv">
+      <dt><span class="sw" style="background:var(--s-running)"></span>Raw videos</dt><dd>{{ storage.raw|gb }} · never deleted</dd>
+      <dt><span class="sw" style="background:#8fb3e8"></span>Arena crops</dt><dd>{{ storage.crop|gb }} · can be removed and made again</dd>
+      <dt><span class="sw" style="background:var(--s-done)"></span>Tracking results</dt><dd>{{ storage.other|gb }}</dd>
+      {% if storage.disk %}<dt>Free</dt><dd>{{ storage.disk.free|gb }} of {{ storage.disk.total|gb }}{% if storage.more %} · room for about {{ storage.more }} more recordings{% endif %}</dd>{% endif %}
+    </dl>
+  </section>
+</div>
+{% endblock %}

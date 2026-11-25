@@ -15,6 +15,7 @@ from pathlib import PurePosixPath
 from django.db import transaction
 from django.utils import timezone
 
+from . import quality
 from .api import MAX_ATTEMPTS
 from .formats import CROP_VIDEO, SPECS, TRAJECTORIES, asset_type, validate_crop_video, validate_trajectories
 from .models import Asset, Run
@@ -110,6 +111,11 @@ def commit_run(run: Run) -> bool:
                     errors, more, extra = validate_trajectories(path, run.params.get("fps"), run.params.get("n_flies"))
                     warnings += more
                     meta.update(extra)
+                    if not errors:
+                        try:
+                            meta["quality"] = quality.for_asset(path, meta, run.params)
+                        except Exception as e:  # noqa: BLE001 - quality is a help for review, not a gate
+                            warnings.append(f"Quality could not be computed: {e}")
                 elif path.stat().st_size == 0:
                     errors = ["empty file"]
                 if errors:

@@ -11,6 +11,7 @@ urlpatterns = [
     path("upload/<int:pk>/chunk/", views.upload_chunk, name="upload_chunk"),
     path("upload/<int:pk>/form/", views.upload_form, name="upload_form"),
     path("upload/<int:pk>/cancel/", views.upload_cancel, name="upload_cancel"),
+    path("upload/<int:pk>/arenas/", views.upload_arenas, name="upload_arenas"),
     path("video/<int:pk>/", views.register, name="register"),
     path("video/<int:pk>/ignore/", views.ignore, name="ignore"),
     path("video/<int:pk>/frame.jpg", views.frame, name="frame"),

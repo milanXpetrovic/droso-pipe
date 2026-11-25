@@ -4,6 +4,7 @@
   POST /api/runs/<id>/heartbeat                                       -> {"cancel": bool}
   POST /api/runs/<id>/complete      {"files": [...], "outputs": [...], "log": "..."}
   POST /api/runs/<id>/fail          {"error": "...", "log": "..."}
+  POST /api/worker/status           {"state": "paused", "detail": "recording software running"}  -> 204
 """
 
 import json
@@ -45,7 +46,18 @@ def own_run(worker, pk, *statuses) -> Run | None:
 
 
 @worker_api
+def status(request, worker, body):
+    """Why a worker is not asking for work (recording in progress, outside its hours): shown on the Machines page."""
+    state = str(body.get("state", ""))[:16]
+    Worker.objects.filter(pk=worker.pk).update(state=state, state_detail=str(body.get("detail", ""))[:200],
+                                               state_at=timezone.now())
+    return HttpResponse(status=204)
+
+
+@worker_api
 def claim(request, worker, body):
+    if worker.state:                                     # asking for work again: no longer paused
+        Worker.objects.filter(pk=worker.pk).update(state="", state_detail="", state_at=timezone.now())
     offered = set(body.get("tools", [])) & set(worker.tools)
     if not offered:
         return HttpResponse(status=204)

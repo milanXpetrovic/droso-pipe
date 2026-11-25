@@ -166,7 +166,7 @@ def arenas(request, code):
                 group_fs.save()      # groups first: an arena marked empty then removes its groups
                 arena_fs.save()
             messages.success(request, f"{recording.code} saved.")
-            return redirect("intake:inbox")
+            return redirect("web:recording", code=recording.code)
     else:
         arena_fs = ArenaFormSet(queryset=arena_qs, prefix="arena", **arena_kwargs)
         group_fs = FlyGroupFormSet(queryset=group_qs, prefix="group")
@@ -201,8 +201,10 @@ def frame(request, pk):
     except (KeyError, ValueError):
         t = random.uniform(0.05, 0.95) * duration
     t = round(min(max(t, 0.0), max(duration - 0.5, 0.0)), 1)
-    cache = Path(settings.MEDIA_ROOT) / "previews" / str(video.pk)
-    path = frame_jpeg(video_path(video.current_rel_path()), round(video.file_time(t), 2), cache)
+    thumb = request.GET.get("size") == "thumb"                 # small, for lists of recordings
+    cache = Path(settings.MEDIA_ROOT) / "previews" / str(video.pk) / ("thumb" if thumb else "")
+    path = frame_jpeg(video_path(video.current_rel_path()), round(video.file_time(t), 2), cache,
+                      width=240 if thumb else 1600)
     response = FileResponse(open(path, "rb"), content_type="image/jpeg")
     response["Cache-Control"] = "private, max-age=86400"
     return response
@@ -251,6 +253,7 @@ def upload_json(video, offset, **extra):
     return JsonResponse({"id": video.pk, "offset": offset, "size": video.size_bytes,
                          "chunk_url": reverse("intake:upload_chunk", args=[video.pk]),
                          "form_url": reverse("intake:upload_form", args=[video.pk]),
+                         "arenas_url": reverse("intake:upload_arenas", args=[video.pk]),
                          "chunk_bytes": CHUNK_BYTES, **extra})
 
 
@@ -347,3 +350,25 @@ def upload_cancel(request, pk):
     else:
         messages.success(request, f"Upload of {video.file_name} cancelled.")
     return redirect("intake:inbox")
+
+
+@operator_view
+def upload_arenas(request, pk):
+    """After upload and details: the frame with clickable arenas, to leave some out before they are cut out."""
+    video = get_object_or_404(IncomingVideo.objects.select_related("recording__layout"), pk=pk)
+    rec = video.recording
+    if rec is None or video.status == IncomingVideo.Status.UPLOADING:
+        raise Http404("Not ready yet.")
+    locked = rec.runs.filter(tool__code="crop").exclude(status__in=["pending", "cancelled", "failed"]).exists()
+    if request.method == "POST" and not locked:
+        arena = get_object_or_404(Arena, recording=rec, index=request.POST.get("index"))
+        if arena.status == Arena.Status.OK:
+            arena.status, arena.exclusion_reason = Arena.Status.EXCLUDED, request.POST.get("reason", "")[:200]
+        else:
+            arena.status, arena.exclusion_reason = Arena.Status.OK, ""
+        arena.save(update_fields=["status", "exclusion_reason"])
+    arenas = list(rec.arenas.order_by("index"))
+    duration = video.real_duration() or 0
+    return render(request, "intake/_upload_arenas.html", {
+        "video": video, "layout": rec.layout, "arenas": arenas, "locked": locked, "t": round(duration / 2, 1),
+        "n_used": sum(a.status == Arena.Status.OK for a in arenas)})

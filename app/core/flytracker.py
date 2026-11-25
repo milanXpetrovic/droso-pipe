@@ -5,6 +5,12 @@ from pathlib import Path
 import numpy as np
 
 
+# Written by FlyTracker's calibrator since 2021 (head-tail fix); FlyTracker 1.0.5 does not, and tracking with such
+# a calibration fails with 'Unrecognized field name "vel_fil"'.
+REQUIRED_PARAMS = ("vel_fil", "quartile_area", "quartile_major_axis", "quartile_minor_axis",
+                   "choose_orientations_weight_theta")
+
+
 def calibration_info(path: Path) -> dict:
     """Works for circle calibrations (centroids, r) and full-frame ones (no circle at all)."""
     import scipy.io as sio
@@ -17,14 +23,19 @@ def calibration_info(path: Path) -> dict:
             "arena_centre_px": [centre[1], centre[0]] if len(centre) == 2 else None,   # stored as (y, x)
             "image_size_px": [int(mask.shape[1]), int(mask.shape[0])] if mask.ndim == 2 and mask.size else None,
             "roi_type": int(c.roi_type) if "roi_type" in fields else None,
-            "fps": float(c.FPS), "n_flies": int(c.n_flies), "auto_detect": int(c.auto_detect)}
+            "fps": float(c.FPS), "n_flies": int(c.n_flies), "auto_detect": int(c.auto_detect),
+            "missing_params": [k for k in REQUIRED_PARAMS
+                               if "params" not in fields or k not in set(c.params._fieldnames)]}
 
 
 def template_warnings(info: dict, mode: str, arena_diameter_mm: float | None) -> list[str]:
     """Problems worth knowing before a template is used for hundreds of videos."""
     warnings = []
     r, centre, size = info.get("arena_r_px"), info.get("arena_centre_px"), info.get("image_size_px")
-    if mode == "circle" and r is None:
+    if info.get("missing_params"):
+        warnings.append("Made with an old FlyTracker (1.0.5): tracking with it fails. Calibrate again with the "
+                        "FlyTracker the workers use (C:\\FlyTracker), not FlyTracker-1.0.5.")
+    if mode == "circle" and not r:
         warnings.append("This calibration has no circular arena, so it cannot be used in circle mode. "
                         "Use full-frame mode, or calibrate with a circular arena.")
     if mode == "circle":

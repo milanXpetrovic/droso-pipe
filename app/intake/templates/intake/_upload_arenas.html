@@ -1,0 +1,25 @@
+{% load intake_extras %}
+<div class="head" style="margin-bottom:4px"><h2 style="margin:0">Arenas</h2><span class="spacer"></span>
+  <span class="help">{{ n_used }} of {{ arenas|length }} will be analysed</span></div>
+{% if locked %}
+<p class="help" style="margin:0 0 10px">The arenas are already cut out of the video. To change them, use “Edit arenas and flies” on the recording page.</p>
+{% else %}
+<p class="help" style="margin:0 0 10px">Click an arena to leave it out, for example when it is empty or a fly escaped. Click again to include it.</p>
+{% endif %}
+<div class="arena-pick">
+  <img src="{% url 'intake:frame' video.pk %}?t={{ t }}" alt="Frame with the arenas">
+  <div class="cells" style="grid-template-columns:repeat({{ layout.cols }}, 1fr); grid-template-rows:repeat({{ layout.rows }}, 1fr)">
+    {% for a in arenas %}
+    <button type="button" data-index="{{ a.index }}" aria-pressed="{% if a.status != 'ok' %}true{% else %}false{% endif %}"
+            aria-label="A{{ a.index|stringformat:'02d' }}, {% if a.status != 'ok' %}left out. Click to include it.{% else %}included. Click to leave it out.{% endif %}"
+            {% if locked %}disabled{% endif %}><span>A{{ a.index|stringformat:"02d" }}</span></button>
+    {% endfor %}
+  </div>
+</div>
+{% if not locked %}
+<div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px">
+  <label for="why" style="margin:0">Reason for leaving out</label>
+  <select id="why" style="width:auto"><option>Arena empty</option><option>A fly escaped</option><option>A fly died</option><option>Wrong flies or number</option><option>Something else</option></select>
+</div>
+{% endif %}
+{% for a in arenas %}{% if a.status != 'ok' and a.exclusion_reason %}<div class="help">A{{ a.index|stringformat:"02d" }}: {{ a.exclusion_reason }}</div>{% endif %}{% endfor %}

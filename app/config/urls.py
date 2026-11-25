@@ -1,10 +1,9 @@
 from django.contrib import admin
 from django.urls import include, path
-from django.views.generic import RedirectView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("inbox/", include("intake.urls")),
     path("api/", include("core.urls")),
-    path("", RedirectView.as_view(url="/inbox/", permanent=False)),
+    path("", include("web.urls")),
 ]

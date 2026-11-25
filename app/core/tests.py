@@ -291,14 +291,20 @@ print("fake FlyTracker done")
 """
 
 
-def calibration_file(ppm=10.0, r=300.0, centre_yx=(350, 350), size=(700, 700), circle=True) -> bytes:
-    """circle=False: like a full-frame calibration, which has no centroids and no r at all."""
+def calibration_file(ppm=10.0, r=300.0, centre_yx=(350, 350), size=(700, 700), circle=True, old=False) -> bytes:
+    """circle=False: like a full-frame calibration, which has no centroids and no r at all.
+    old=True: like FlyTracker 1.0.5, whose params lack the fields today's tracker needs."""
     path = Path(tempfile.mkdtemp()) / "calibration.mat"
-    calib = {"PPM": ppm, "mask": np.ones(size[::-1]), "FPS": 10.0, "n_flies": 12,
+    params = {"vel_thresh": 2.0}
+    if not old:
+        params.update({"vel_fil": np.array([0.5, 0, -0.5]), "quartile_area": np.array([40.0, 60.0]),
+                       "quartile_major_axis": np.array([8.0, 11.0]), "quartile_minor_axis": np.array([3.0, 4.0]),
+                       "choose_orientations_weight_theta": 0.3})
+    calib = {"PPM": ppm, "mask": np.ones(size[::-1]), "FPS": 10.0, "n_flies": 12, "params": params,
              "auto_detect": 1 if circle else 0, "roi_type": 2 if circle else 1}
     if circle:
         calib.update({"r": r, "centroids": np.array(centre_yx)})
-    sio.savemat(path, {"calib": calib})
+    sio.savemat(path, {"calib": calib}, long_field_names=True)      # MATLAB allows up to 63 characters
     return path.read_bytes()
 
 
@@ -336,9 +342,16 @@ class TemplateAdminTests(Store, TestCase):
         self.assertEqual((t.mode, t.asset.meta["arena_r_px"], t.asset.meta["ppm"], t.warnings),
                          ("fullframe", None, 12.98, []))
 
-    def test_fullframe_calibration_refused_for_circle_mode_warning(self):
-        self.upload("wrong", calibration_file(circle=False), mode="circle")
-        self.assertTrue(any("no circular arena" in w for w in TrackerTemplate.objects.get().warnings))
+    def test_calibration_without_circle_refused_for_circle_mode(self):
+        r = self.upload("wrong", calibration_file(circle=False), mode="circle")
+        self.assertContains(r, "No circular arena was detected")
+        self.assertFalse(TrackerTemplate.objects.exists())
+
+    def test_old_flytracker_calibration_refused(self):
+        """FlyTracker 1.0.5 calibrations make every tracking run fail ('Unrecognized field name vel_fil')."""
+        r = self.upload("old", calibration_file(old=True))
+        self.assertContains(r, "old FlyTracker")
+        self.assertFalse(TrackerTemplate.objects.exists())
 
     def test_not_a_calibration_file(self):
         self.upload("bad", b"not a mat file")
@@ -431,6 +444,8 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         self.assertEqual(traj.meta["frame_range"], [100, 119])                   # raw-video frames
         self.assertEqual(traj.warnings, [])
         self.assertEqual(traj.meta["cores"], 3)                                 # recorded, from the worker
+        self.assertEqual(traj.meta["quality"]["flies_found"], 5)                  # computed when stored, for review
+        self.assertIn(traj.meta["quality"]["verdict"], ("good", "check", "bad"))
         import pandas as pd
         df = pd.read_parquet(self.root / traj.rel_path)
         self.assertAlmostEqual(float(df.loc[df.fly == 1, "x_mm"].iloc[0]), 10.0, places=4)   # 100 px / 10 px/mm

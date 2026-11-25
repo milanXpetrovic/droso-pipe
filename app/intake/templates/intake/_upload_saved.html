@@ -1,4 +1,4 @@
-<div class="card" id="saved" data-code="{{ recording.code }}" data-arenas="{% url 'intake:arenas' recording.code %}">
-  <h2 style="margin-top:0">Metadata saved: {{ recording.code }}</h2>
-  <p class="muted" style="margin:0">{{ recording.experiment }} · {{ recording.condition }} · {{ recording.get_sex_display }} · {{ recording.n_flies }} flies</p>
+<div class="card" id="saved" data-code="{{ recording.code }}" data-recording="{% url 'web:recording' recording.code %}">
+  <h2>Metadata saved: <span class="mono">{{ recording.code }}</span></h2>
+  <p class="muted" style="margin:0">{{ recording.experiment.name }} · {{ recording.condition }} · {{ recording.get_sex_display|lower }} · {{ recording.n_flies|default:"?" }} flies per arena · {{ recording.layout }}</p>
 </div>

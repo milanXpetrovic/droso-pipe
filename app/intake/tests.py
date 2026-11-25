@@ -182,7 +182,7 @@ class RegisterTests(RegisterBase):
                      f"group-{i}-n_flies": 12}
         data |= {"arena-2-status": "excluded", "arena-3-status": "empty", "group-1-condition": self.iso.pk}
         r = self.client.post(reverse("intake:arenas", args=[rec.code]), data)
-        self.assertRedirects(r, reverse("intake:inbox"))
+        self.assertRedirects(r, reverse("web:recording", args=[rec.code]))
         self.assertEqual([a.status for a in rec.arenas.order_by("index")], ["ok", "ok", "excluded", "empty"])
         self.assertEqual(FlyGroup.objects.filter(arena__recording=rec).count(), 3)       # empty arena has no flies
         self.assertEqual(FlyGroup.objects.get(arena__recording=rec, arena__index=2).condition, self.iso)

@@ -31,6 +31,7 @@ class RegisterForm(forms.ModelForm):
         model = Recording
         fields = [f for _, names in GROUPS for f in names]
         widgets = {"started_at": DATETIME, "cross_date": DATE, "sorting_date": DATE,
+                   "sex": forms.RadioSelect(attrs={"class": "seg"}),
                    "technical_notes": forms.Textarea(attrs={"rows": 3}),
                    "behavior_notes": forms.Textarea(attrs={"rows": 3})}
 

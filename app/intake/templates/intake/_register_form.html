@@ -1,16 +1,48 @@
 {% load intake_extras %}
-{% if copied_from %}<div class="msg">Fields copied from the last recording on this rig ({{ copied_from.code }}). Check what changed.</div>{% endif %}
+<style>
+  .seg { display:flex; border:1px solid var(--field); border-radius:8px; overflow:hidden; }
+  .seg > div { flex:1; } .seg label { display:block; margin:0; padding:9px 0; text-align:center; font-size:14px; color:var(--ink); cursor:pointer; }
+  .seg > div + div label { border-left:1px solid var(--field); }
+  .seg input { position:absolute; opacity:0; width:1px; }
+  .seg label:has(input:checked) { background:var(--ink); color:var(--bg); font-weight:600; }
+  .seg label:has(input:focus-visible) { outline:3px solid var(--accent); outline-offset:-3px; }
+  .with-new { display:flex; gap:8px; } .with-new select { flex:1; }
+  .newbox { margin-top:10px; padding:12px; border-radius:8px; border:1px dashed var(--accent); background:var(--accent-bg);
+            display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end; }
+  .newbox[hidden] { display:none; }
+  .newbox .err { grid-column:1 / -1; color:var(--bad); font-size:13px; }
+</style>
+{% if copied_from %}<div class="msg info">Filled in from your last recording on this rig ({{ copied_from.code }}). Check what changed.</div>{% endif %}
 <form method="post" id="register-form">
   {% csrf_token %}
   {{ form.non_field_errors }}
   {% for title, fields in form.grouped %}
   <div class="card">
-    <h2 style="margin-top:0">{{ title }}</h2>
+    <h2>{{ title }}</h2>
     <div class="grid">
       {% for f in fields %}
-      <div>
+      <div{% if f.name == "experiment" or f.name == "condition" %} style="grid-column:1 / -1"{% endif %}>
         <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}</label>
-        {{ f }}
+        {% if f.name == "experiment" or f.name == "condition" %}
+          <div class="with-new">{{ f }}<button type="button" class="btn secondary" data-new="{{ f.name }}" aria-expanded="false">+ New</button></div>
+          {% if f.name == "experiment" %}
+          <div class="newbox" id="new-experiment" hidden>
+            <div><label for="ne-code">Short code (no spaces)</label><input id="ne-code" data-k="code" placeholder="Iso-2026"></div>
+            <div><label for="ne-name">Name</label><input id="ne-name" data-k="name" placeholder="Isolation 7 days"></div>
+            <div style="display:flex; gap:6px"><button type="button" class="btn" data-add="{% url 'web:experiment_new' %}">Add</button><button type="button" class="btn secondary" data-cancel>Cancel</button></div>
+            <div class="err" aria-live="polite"></div>
+          </div>
+          {% else %}
+          <div class="newbox" id="new-condition" hidden>
+            <div><label for="nc-code">New condition (short code)</label><input id="nc-code" data-k="code" placeholder="w1118-Iso3d"></div>
+            <div><label for="nc-geno">Genotype</label><select id="nc-geno" data-k="genotype">{% genotypes as gs %}{% for g in gs %}<option value="{{ g.pk }}">{{ g }}</option>{% endfor %}</select></div>
+            <div><label for="nc-gnew">…or a new genotype</label><input id="nc-gnew" data-k="genotype_new" placeholder="e.g. w1118"></div>
+            <div><label for="nc-desc">Description</label><input id="nc-desc" data-k="description" placeholder="3 days isolated"></div>
+            <div style="display:flex; gap:6px"><button type="button" class="btn" data-add="{% url 'web:condition_new' %}">Add</button><button type="button" class="btn secondary" data-cancel>Cancel</button></div>
+            <div class="err" aria-live="polite"></div>
+          </div>
+          {% endif %}
+        {% else %}{{ f }}{% endif %}
         {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
         {{ f.errors }}
       </div>
@@ -20,10 +52,33 @@
   </div>
   {% endfor %}
   {% if in_upload %}
-  <button class="btn" type="submit">Save metadata</button>
-  <span class="help">You can save before the upload finishes.</span>
+  <button class="btn" type="submit">Save</button>
+  <span class="help">Can be saved before the upload finishes.</span>
   {% else %}
   <button class="btn" type="submit">Save and check arenas</button>
-  <a class="btn secondary" href="{% url 'intake:inbox' %}">Cancel</a>
+  <a class="btn secondary" href="{% url 'web:recordings' %}">Cancel</a>
   {% endif %}
 </form>
+<script>
+(() => {
+  const form = document.getElementById("register-form");
+  const csrf = form.querySelector("[name=csrfmiddlewaretoken]").value;
+  form.querySelectorAll("[data-new]").forEach(btn => {
+    const box = document.getElementById("new-" + btn.dataset.new);
+    btn.addEventListener("click", () => { box.hidden = !box.hidden; btn.setAttribute("aria-expanded", String(!box.hidden));
+                                          if (!box.hidden) box.querySelector("input").focus(); });
+    box.querySelector("[data-cancel]").addEventListener("click", () => { box.hidden = true; btn.setAttribute("aria-expanded", "false"); });
+    box.querySelector("[data-add]").addEventListener("click", async e => {
+      const body = new FormData();
+      box.querySelectorAll("[data-k]").forEach(el => body.append(el.dataset.k, el.value));
+      const r = await fetch(e.target.dataset.add, { method: "POST", body, headers: { "X-CSRFToken": csrf, "Accept": "application/json" } });
+      const j = await r.json();
+      if (!r.ok) { box.querySelector(".err").textContent = j.error || "Could not add it."; return; }
+      const select = form.querySelector(`select[name="${btn.dataset.new}"]`);
+      select.add(new Option(j.label, j.id, true, true));
+      box.hidden = true; btn.setAttribute("aria-expanded", "false");
+      box.querySelectorAll("input").forEach(el => el.value = ""); box.querySelector(".err").textContent = "";
+    });
+  });
+})();
+</script>

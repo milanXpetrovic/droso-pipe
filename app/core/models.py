@@ -15,6 +15,7 @@ from django.db import models
 from django.utils import timezone
 
 from django.conf import settings
+from simple_history.models import HistoricalRecords
 
 from domain.models import Arena, ArenaLayout, Recording
 
@@ -59,6 +60,9 @@ class Worker(models.Model):
     tools = models.JSONField(default=list, blank=True, help_text='Tools it may run, e.g. ["crop@1.0.0"].')
     enabled = models.BooleanField(default=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
+    state = models.CharField(max_length=16, blank=True, help_text='What the worker last said, e.g. "paused".')
+    state_detail = models.CharField(max_length=200, blank=True)
+    state_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
 
     def __str__(self):
@@ -191,3 +195,25 @@ class TrackerTemplate(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.layout})"
+
+
+class Review(models.Model):
+    """A person's decision on one result (today: the trajectories of one arena). The result itself never changes;
+    a better tracker later makes a new result with its own review."""
+
+    class Decision(models.TextChoices):
+        ACCEPTED = "accepted", "Accepted"
+        TRACKING_BAD = "tracking_bad", "Tracking bad, video fine"
+        UNUSABLE = "unusable", "Arena can't be used"
+
+    asset = models.OneToOneField(Asset, on_delete=models.PROTECT, related_name="review")
+    decision = models.CharField(max_length=16, choices=Decision.choices)
+    reason = models.CharField(max_length=64, blank=True, help_text="Why an arena can't be used.")
+    note = models.TextField(blank=True)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+    decided_at = models.DateTimeField(default=timezone.now)
+    history = HistoricalRecords()
+
+    def __str__(self):
+        return f"{self.asset} -> {self.decision}"

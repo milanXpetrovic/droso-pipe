@@ -172,6 +172,10 @@ def work_once(cfg: dict, api: Api, storage: Storage) -> bool:
     ok, why = may_work(cfg)
     if not ok:
         log(f"waiting: {why}")
+        try:
+            api.post("worker/status", {"state": "paused", "detail": why})     # shown on the Machines page
+        except (urllib.error.URLError, OSError):
+            pass                                         # an older server, or not reachable: not important
         return False
     spec = api.post("runs/claim", {"tools": list(cfg["tools"])})
     if not spec:

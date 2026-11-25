@@ -1,0 +1,118 @@
+{% extends "web/base.html" %}
+{% load intake_extras web_extras %}
+{% block title %}{{ rec.code }} · Droso pipeline{% endblock %}
+{% block style %}
+  .stepper { list-style:none; margin:0 0 16px; padding:14px 16px; display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px;
+             background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  .stepper li { display:flex; flex-direction:column; gap:5px; } .stepper .bar { height:6px; border-radius:3px; background:var(--s-not_started); }
+  .stepper .bar[data-s=done] { background:var(--s-done); } .stepper .bar[data-s=running] { background:var(--s-running); }
+  .stepper .bar[data-s=waiting] { background:var(--s-waiting); } .stepper .bar[data-s=failed] { background:var(--s-failed); }
+  .stepper .bar[data-s=needs_you] { background:var(--s-needs_you); }
+  .stepper b { font-size:14px; } .stepper span { font-size:12px; color:var(--muted); }
+  @media (max-width: 700px) { .stepper { grid-template-columns:1fr; } }
+  .frame { position:relative; line-height:0; border-radius:8px; overflow:hidden; background:var(--frame); }
+  .frame img { width:100%; display:block; }
+  .frame .cells { position:absolute; inset:0; display:grid; }
+  .frame .cell { position:relative; border:3px solid var(--a); margin:3px; border-radius:6px; }
+  .frame .cell .c { position:absolute; left:6px; top:6px; padding:2px 8px; border-radius:5px; background:rgba(0,0,0,.75); color:#fff; font-size:13px; font-weight:700; line-height:1.4; }
+  .frame .cell .tag { position:absolute; right:6px; bottom:6px; padding:2px 8px; border-radius:5px; background:var(--a); color:#111; font-size:12px; font-weight:700; line-height:1.4; }
+  dl.kv { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:8px 14px; font-size:14px; } dl.kv dt { color:var(--muted); } dl.kv dd { margin:0; font-weight:500; }
+  .notice { padding:12px 14px; border-radius:12px; background:var(--warn-bg); color:var(--warn); font-size:13px; line-height:1.45; margin-top:14px; }
+  .notice b { display:block; margin-bottom:2px; }
+  details > summary { cursor:pointer; font-weight:700; }
+{% endblock %}
+{% block content %}
+<a href="{% url 'web:recordings' %}" style="font-size:14px">← All recordings</a>
+<div class="head" style="margin-top:8px">
+  <h1 class="mono" style="font-size:22px; font-weight:500">{{ rec.code }}</h1>
+  <span style="font-weight:600">{{ rec.experiment.name }} · {{ rec.condition }}</span>
+  <span class="spacer"></span>
+  {% if st.to_review %}<a class="btn" href="{% url 'web:review_item' st.to_review.0.pk %}">Review {{ st.to_review|length }} arena{{ st.to_review|length|pluralize }}</a>{% endif %}
+  <a class="btn secondary" href="{% url 'intake:arenas' rec.code %}">Edit arenas and flies</a>
+</div>
+
+<ol class="stepper" aria-label="Progress">
+  {% for s in st.steps %}<li><span class="bar" data-s="{{ s.state }}"></span><b>{{ s.name }}</b><span>{{ s.text|default:s.state|cut:"_" }}</span></li>{% endfor %}
+</ol>
+
+<div class="row" style="margin-bottom:16px">
+  <section class="card" style="flex:3 1 560px; margin:0" aria-label="Video frame">
+    <h2>Frame from the video{% if frame_t %} <span class="muted" style="font-weight:400; font-size:13px">at {{ frame_t|hms }}</span>{% endif %}</h2>
+    {% if video and frame_t %}
+    <div class="frame">
+      <img src="{% url 'intake:frame' video.pk %}?t={{ frame_t }}" alt="Frame with the arenas of {{ rec.code }}">
+      <div class="cells" style="grid-template-columns:repeat({{ rec.layout.cols }}, 1fr); grid-template-rows:repeat({{ rec.layout.rows }}, 1fr)">
+        {% for a in st.arenas %}<div class="cell" data-a="{{ a.state }}"><span class="c">{{ a.code }}</span><span class="tag">{{ a.label }}</span></div>{% endfor %}
+      </div>
+    </div>
+    {% else %}<p class="muted">The frame appears once the video is on the server.</p>{% endif %}
+  </section>
+
+  <section style="flex:1 1 320px" aria-label="Details">
+    <div class="card" style="margin:0">
+      <h2>Details</h2>
+      <dl class="kv">
+        <dt>Experiment</dt><dd>{{ rec.experiment.name }}</dd>
+        <dt>Condition</dt><dd>{{ rec.condition }} ({{ rec.condition.genotype }})</dd>
+        <dt>Flies</dt><dd>{{ rec.n_flies|default:"?" }} per arena · {{ rec.get_sex_display|lower }}</dd>
+        {% if rec.cross_date or rec.sorting_date %}<dt>Crossed / sorted</dt><dd>{{ rec.cross_date|date:"d.m.Y"|default:"—" }} / {{ rec.sorting_date|date:"d.m.Y"|default:"—" }}</dd>{% endif %}
+        <dt>Layout</dt><dd>{{ rec.layout }}{% if rec.layout.arena_diameter_mm %} · {{ rec.layout.arena_diameter_mm|floatformat:"-1" }} mm arenas{% endif %}</dd>
+        <dt>Rig · camera</dt><dd>{{ rec.rig }} · camera {{ rec.camera }}</dd>
+        <dt>Recorded</dt><dd>{{ rec.started_at|date:"d.m.Y H:i" }}{% if duration %} · {{ duration|hms }}{% endif %}</dd>
+        <dt>Analysed</dt><dd>{% if rec.window_start_s or rec.window_end_s %}{{ rec.window_start_s|default:0|hms }} to {{ rec.window_end_s|hms }}{% else %}whole recording{% endif %}</dd>
+        {% if rec.protocol %}<dt>Protocol</dt><dd>{{ rec.protocol }}</dd>{% endif %}
+        <dt>Entered by</dt><dd>{{ rec.operator|default:"—" }}</dd>
+      </dl>
+    </div>
+    {% for n in notices %}<div class="notice" role="note"><b>{{ n.title }}</b>{{ n.text }}{% if n.admin %} <b style="display:inline">Admin:</b> {{ n.admin }}{% endif %}</div>{% endfor %}
+  </section>
+</div>
+
+<section class="card" aria-label="Arenas">
+  <h2>Arenas</h2>
+  <div class="scroll">
+  <table style="min-width:760px">
+    <thead><tr><th>Arena</th><th>State</th><th>Flies found</th><th>Possible identity swaps</th><th>Lost positions</th><th>Decided by</th><th><span class="sr">Action</span></th></tr></thead>
+    <tbody>
+    {% for a in st.arenas %}
+      <tr>
+        <td class="mono">{{ a.code }}</td>
+        <td><span class="chip {{ a.state }}">{{ a.label }}</span>{% if a.worker and a.state == 'tracking' %} <span class="help">on {{ a.worker }}</span>{% endif %}</td>
+        <td>{% if a.quality %}{{ a.quality.flies_found }}{% if a.quality.flies_expected %} of {{ a.quality.flies_expected }}{% endif %}{% else %}—{% endif %}</td>
+        <td>{% if a.quality.flags_per_min is not None %}{{ a.quality.flags_per_min|floatformat:0 }} per min{% else %}—{% endif %}</td>
+        <td>{% if a.quality %}{{ a.quality.lost_fraction|pct }}{% else %}—{% endif %}</td>
+        <td>{% if a.review %}{{ a.review.decided_by|default:"—" }} · {{ a.review.decided_at|date:"d.m. H:i" }}{% if a.review.note %}<div class="help">{{ a.review.note }}</div>{% endif %}{% else %}—{% endif %}</td>
+        <td style="text-align:right">{% if a.trajectories %}<a href="{% url 'web:review_item' a.trajectories.pk %}" style="font-weight:600">{% if a.review %}Change{% else %}Review{% endif %}</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+{% if failed %}
+<section class="card" aria-label="Errors">
+  <h2 style="color:var(--bad)">What went wrong</h2>
+  {% for r in failed %}
+  <details style="margin-bottom:8px"><summary>{{ r.tool }}{% if r.arena %} · A{{ r.arena.index|stringformat:"02d" }}{% endif %}: {{ r.error|truncatechars:140 }}</summary>
+    <pre class="mono" style="white-space:pre-wrap; font-size:12px; background:var(--line2); padding:10px; border-radius:8px; max-height:300px; overflow:auto">{{ r.log|default:r.error }}</pre></details>
+  {% endfor %}
+  <p class="help">An admin can try failed jobs again on the <a href="{% url 'web:machines' %}">Machines</a> page.</p>
+</section>
+{% endif %}
+
+<details class="card">
+  <summary>History and files</summary>
+  <div class="scroll" style="margin-top:10px">
+  <table>
+    <thead><tr><th>When</th><th>What</th><th>Where</th><th>State</th></tr></thead>
+    <tbody>
+    {% for r in history %}
+      <tr><td class="mono">{{ r.created_at|date:"d.m. H:i" }}</td><td>{{ r.word }}</td><td>{{ r.worker|default:"—" }}</td><td>{{ r.get_status_display }}</td></tr>
+    {% endfor %}
+    {% if raw %}<tr><td colspan="4" class="help">Raw video: <span class="mono">{{ raw.rel_path }}</span> · {{ raw.size_bytes|gb }}</td></tr>{% endif %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endblock %}

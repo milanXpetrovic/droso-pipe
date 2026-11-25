@@ -66,13 +66,21 @@ Keep things simple; avoid overengineering.
 - Crops may be deleted to save space: they can always be made again from raw.
 
 ## UI / ops
-- Simple web GUI to see processing status of everything (what is/isn't processed).
+- English UI, app `web`: Recordings (status of every recording in 5 steps: Upload · Check ·
+  Arenas · Tracking · Review, grouped by what needs doing), Recording detail, Review (one arena
+  at a time: paths, automatic quality checks, accept / tracking bad / unusable), Experiments
+  (usable recordings per condition vs target), Machines, Settings. Upload page in `intake`.
+- Design reference: https://claude.ai/artifact/XSERZQsdNTW3tyfc4kZWTi (7 screens).
+- Built for ~50+ recordings and 3 users (admin + 2 biotechnologists); Django admin stays as the
+  admin's fallback, not something users need.
 - Optional Discord bot for status messages.
 
 ## Repo
-github.com/milanXpetrovic/droso-pipe. Done: metadata model, upload/Inbox, ingest to raw/
-on the NAS, worker API, crop and FlyTracker tools. Not started: manual review, interaction
-detection, classification, YOLO counts, status overview, sensor/DAM import, legacy JSON import.
+github.com/milanXpetrovic/droso-pipe. Done: metadata model, browser upload, ingest to raw/
+on the NAS with frame-rate check, worker API, crop and FlyTracker tools, quality checks,
+review level 1, status pages. Not started: identity-swap correction (review level 2), video
+with fly labels in review, interaction detection, classification, YOLO counts, sensor/DAM
+import, legacy JSON import.
 Deploy: push a tag `app-vX.Y.Z` -> CI tests and builds the image -> set that tag in TrueNAS.
 
 ## Users

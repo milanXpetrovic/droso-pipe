@@ -233,6 +233,7 @@ class Experiment(DomainModel):
                               related_name="+")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.RUNNING)
     start_date = models.DateField(null=True, blank=True)
+    target_recordings = models.PositiveSmallIntegerField(default=20, help_text="Usable recordings wanted per condition.")
     notes = models.TextField(blank=True)
 
     class Meta:

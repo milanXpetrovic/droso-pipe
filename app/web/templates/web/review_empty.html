@@ -1,0 +1,10 @@
+{% extends "web/base.html" %}
+{% block title %}Review · Droso pipeline{% endblock %}
+{% block content %}
+<div class="head"><h1>Review</h1></div>
+<div class="card" style="text-align:center; padding:40px 16px">
+  <h2 style="font-size:18px">Nothing to review</h2>
+  <p class="muted" style="margin:0 0 16px">Every tracked arena has a decision. New ones appear here as soon as tracking finishes.</p>
+  <a class="btn secondary" href="{% url 'web:recordings' %}">Back to recordings</a>
+</div>
+{% endblock %}

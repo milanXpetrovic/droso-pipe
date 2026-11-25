@@ -1,49 +1,65 @@
 {% extends "intake/base.html" %}
-{% block title %}Upload a video{% endblock %}
-{% block content %}
-<style>
-  .drop { border:2px dashed var(--line); border-radius:10px; padding:2.5rem 1rem; text-align:center; cursor:pointer; }
-  .drop.over { border-color:var(--accent); background:var(--ok-bg); }
+{% block title %}Upload a video · Droso pipeline{% endblock %}
+{% block style %}
+  .drop { display:block; border:2px dashed var(--field); border-radius:10px; padding:2.5rem 1rem; text-align:center; cursor:pointer; margin:0; color:var(--ink); }
+  .drop.over { border-color:var(--accent); background:var(--accent-bg); }
   .drop b { font-size:1.1rem; }
-  .bar { height:14px; background:var(--line); border-radius:7px; overflow:hidden; margin:.6rem 0 .3rem; }
-  .bar div { height:100%; width:0; background:var(--accent); transition:width .3s; }
-  .row { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
-</style>
-
-<h1>Upload a video</h1>
+  .bar { height:10px; background:var(--line2); border-radius:5px; overflow:hidden; margin:.6rem 0 .4rem; }
+  .bar div { height:100%; width:0; background:var(--s-running); transition:width .3s; } .bar.done div { background:var(--s-done); }
+  .cols { display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
+  .left { flex:1 1 420px; min-width:0; } .right { flex:1.3 1 520px; min-width:0; }
+  .arena-pick { position:relative; line-height:0; border-radius:8px; overflow:hidden; background:var(--frame); }
+  .arena-pick img { width:100%; display:block; }
+  .arena-pick .cells { position:absolute; inset:0; display:grid; }
+  .arena-pick button { margin:3px; border-radius:6px; border:3px solid rgba(255,255,255,.7); background:transparent; cursor:pointer; position:relative; }
+  .arena-pick button span { position:absolute; left:4px; top:4px; padding:1px 7px; border-radius:4px; background:rgba(0,0,0,.72); color:#fff; font-size:12px; font-weight:700; line-height:1.4; }
+  .arena-pick button[aria-pressed="true"] { border-color:var(--s-failed); background:rgba(20,20,20,.65); }
+  .arena-pick button[aria-pressed="true"]::after { content:"left out"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f3b1a8; font-weight:700; font-size:13px; line-height:1; }
+  .arena-pick button:focus-visible { outline:3px solid var(--accent); outline-offset:-3px; }
+{% endblock %}
+{% block content %}
+<div class="head" style="margin-bottom:4px"><h1>Upload a video</h1></div>
+<p class="muted" style="margin:0 0 18px">Drop the original Basler file, then fill in the form while it uploads. Nothing else to do: processing starts by itself.</p>
 {% csrf_token %}
 
-<div class="card" id="pick">
-  <div class="row" style="margin-bottom:.8rem">
-    <div style="min-width:220px">
-      <label for="rig">Rig</label>
-      <select id="rig">
-        <option value="">From the camera in the file name</option>
-        {% for r in rigs %}<option value="{{ r.pk }}">{{ r }}</option>{% endfor %}
-      </select>
+<div class="cols">
+  <div class="left">
+    <section class="card" id="pick" aria-label="Choose the video">
+      <div style="margin-bottom:12px; max-width:280px">
+        <label for="rig">Rig</label>
+        <select id="rig">
+          <option value="">From the camera in the file name</option>
+          {% for r in rigs %}<option value="{{ r.pk }}">{{ r }}</option>{% endfor %}
+        </select>
+      </div>
+      <label class="drop" id="drop">
+        <b>Drag the video here</b><br><span class="muted">or click to choose it · the original Basler file, name unchanged</span>
+        <input type="file" id="file" accept=".mp4,.avi,.mkv,.mov" hidden>
+      </label>
+    </section>
+
+    <section class="card" id="progress" hidden aria-live="polite">
+      <h2 id="ptitle" style="margin:0">Uploading</h2>
+      <div class="mono help" id="fname" style="margin-top:6px"></div>
+      <div class="bar" id="barbox"><div id="bar"></div></div>
+      <div id="ptext" class="help"></div>
+      <div id="frig" class="help"></div>
+      <div id="pwarn"></div>
+    </section>
+
+    <section class="card" id="arenas" hidden aria-label="Arenas"></section>
+  </div>
+
+  <div class="right">
+    <div id="error"></div>
+    <div id="formbox"><div class="card"><p class="muted" style="margin:0">The form appears as soon as you choose the video.</p></div></div>
+    <div class="card" id="done" hidden>
+      <h2>Done</h2>
+      <p style="margin:0 0 12px">The video is on the server with its details. Processing starts by itself; you can close this page.</p>
+      <a class="btn" id="rec-link" href="{% url 'web:recordings' %}">See the recording</a>
+      <a class="btn secondary" href="{% url 'intake:upload' %}">Upload another video</a>
     </div>
   </div>
-  <label class="drop" id="drop">
-    <b>Drag the video here</b><br><span class="muted">or click to choose it · the original Basler file, name unchanged</span>
-    <input type="file" id="file" accept=".mp4,.avi,.mkv,.mov" hidden>
-  </label>
-</div>
-
-<div class="card" id="progress" hidden>
-  <div class="row"><span class="mono" id="fname"></span><span class="muted" id="frig"></span></div>
-  <div class="bar"><div id="bar"></div></div>
-  <div id="ptext" class="muted"></div>
-  <div id="pwarn"></div>
-</div>
-
-<div id="error"></div>
-<div id="formbox"></div>
-
-<div class="card" id="done" hidden>
-  <h2 style="margin-top:0">Done</h2>
-  <p>The video is on the server with its metadata. Processing starts by itself; you can close this page.</p>
-  <a class="btn" id="arenas-link" href="#">Check arenas (optional)</a>
-  <a class="btn secondary" href="{% url 'intake:upload' %}">Upload another video</a>
 </div>
 
 <script>
@@ -51,7 +67,7 @@
   const START = "{% url 'intake:upload_start' %}";
   const csrf = document.querySelector("[name=csrfmiddlewaretoken]").value;
   const $ = id => document.getElementById(id);
-  let busy = false, uploaded = false, saved = null;
+  let busy = false, uploaded = false, arenasUrl = null;
 
   window.addEventListener("beforeunload", e => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
 
@@ -61,7 +77,7 @@
   drop.addEventListener("drop", e => { if (e.dataTransfer.files.length) begin(e.dataTransfer.files[0]); });
   $("file").addEventListener("change", e => { if (e.target.files.length) begin(e.target.files[0]); });
 
-  function showError(msg) { $("error").innerHTML = msg ? `<div class="msg error"></div>` : ""; if (msg) $("error").firstChild.textContent = msg; }
+  function showError(msg) { $("error").innerHTML = msg ? `<div class="msg error" role="alert"></div>` : ""; if (msg) $("error").firstChild.textContent = msg; }
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const gb = b => (b / 1e9).toFixed(2) + " GB";
   const hms = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
@@ -83,7 +99,8 @@
     let up;
     try { up = await announce(file); } catch (e) { showError(e.message); return; }
     $("pick").hidden = true; $("progress").hidden = false;
-    $("fname").textContent = file.name; $("frig").textContent = "→ " + up.rig;
+    $("fname").textContent = file.name; $("frig").textContent = "Rig: " + up.rig;
+    arenasUrl = up.arenas_url;
     loadForm(up.form_url);
     send(file, up);
   }
@@ -127,15 +144,30 @@
 
   function finished(j) {
     uploaded = true;
-    $("ptext").textContent = "Upload complete" + (j.length ? ` · recording length ${hms(j.length)}` : "") + ".";
-    if (j.warning) $("pwarn").innerHTML = `<div class="msg warning" style="margin:.6rem 0 0"></div>`, $("pwarn").firstChild.textContent = j.warning;
-    if (j.registered && !saved) saved = true;
+    $("ptitle").textContent = "Upload complete"; $("barbox").classList.add("done");
+    $("ptext").textContent = j.length ? `Recording length ${hms(j.length)} (real time).` : "";
+    if (j.warning) { $("pwarn").innerHTML = `<div class="msg warning" style="margin:.6rem 0 0"></div>`; $("pwarn").firstChild.textContent = j.warning; }
     checkDone();
   }
 
   function checkDone() {
     const s = $("saved");
-    if (uploaded && s) { $("done").hidden = false; $("arenas-link").href = s.dataset.arenas; }
+    if (!(uploaded && s)) return;
+    $("done").hidden = false;
+    $("rec-link").href = s.dataset.recording;
+    loadArenas();
+  }
+
+  async function loadArenas(body) {
+    if (!arenasUrl) return;
+    const r = await fetch(arenasUrl, body ? { method: "POST", body, headers: { "X-CSRFToken": csrf } } : {});
+    if (!r.ok) return;
+    const box = $("arenas");
+    box.innerHTML = await r.text(); box.hidden = false;
+    box.querySelectorAll("button[data-index]").forEach(b => b.addEventListener("click", () => {
+      const f = new FormData(); f.append("index", b.dataset.index); f.append("reason", box.querySelector("#why")?.value || "");
+      loadArenas(f);
+    }));
   }
 
   async function loadForm(url, html) {
@@ -156,9 +188,9 @@
       const r = await fetch(url, { method: "POST", body: new FormData(form), headers: { "X-CSRFToken": csrf } });
       if ((r.headers.get("Content-Type") || "").startsWith("application/json")) { showError((await r.json()).error); return; }
       await loadForm(url, await r.text());
-      if ($("saved")) { saved = true; checkDone(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+      if ($("saved")) window.scrollTo({ top: 0, behavior: "smooth" });
     });
-    if ($("saved")) { saved = true; checkDone(); }
+    if ($("saved")) checkDone();
   }
 })();
 </script>

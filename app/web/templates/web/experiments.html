@@ -1,0 +1,58 @@
+{% extends "web/base.html" %}
+{% block title %}Experiments · Droso pipeline{% endblock %}
+{% block style %}
+  .bar { display:block; flex:1; height:10px; border-radius:5px; background:var(--line2); overflow:hidden; }
+  .bar span { display:block; height:10px; background:var(--s-running); } .bar span.full { background:var(--s-done); }
+  details.new { position:relative; } details.new > summary { list-style:none; } details.new > summary::-webkit-details-marker { display:none; }
+  details.new form { position:absolute; right:0; z-index:2; width:min(420px, 90vw); margin-top:8px; display:grid; gap:10px; }
+{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Experiments</h1>
+  <span class="muted">Do we have enough usable recordings for each condition?</span>
+  <span class="spacer"></span>
+  <details class="new">
+    <summary class="btn secondary">+ New experiment</summary>
+    <form method="post" action="{% url 'web:experiment_new' %}" class="card">
+      {% csrf_token %}
+      <div><label for="e-code">Short code (no spaces)</label><input id="e-code" name="code" required placeholder="Iso-2026"></div>
+      <div><label for="e-name">Name</label><input id="e-name" name="name" placeholder="Isolation 7 days"></div>
+      <div><label for="e-target">Usable recordings wanted per condition</label><input id="e-target" name="target" type="number" min="1" value="20"></div>
+      <button class="btn" type="submit">Create</button>
+    </form>
+  </details>
+</div>
+
+{% for x in experiments %}
+<article class="card">
+  <div class="head" style="margin-bottom:4px">
+    <h2 style="margin:0; font-size:18px">{{ x.e.name }}</h2>
+    <span class="chip {% if x.e.status == 'running' %}run{% elif x.e.status == 'done' %}ok{% endif %}">{{ x.e.get_status_display }}</span>
+    <span class="help">{{ x.e.code }}{% if x.e.owner %} · {{ x.e.owner }}{% endif %}{% if x.e.start_date %} · since {{ x.e.start_date|date:"d.m.Y" }}{% endif %}</span>
+  </div>
+  {% if x.e.aim %}<p style="margin:0 0 12px; color:var(--ink2)">{{ x.e.aim }}</p>{% endif %}
+  {% if x.conds %}
+  <div class="scroll">
+  <table style="min-width:760px">
+    <thead><tr><th style="width:22%">Condition</th><th style="width:32%">Usable recordings (target {{ x.e.target_recordings }})</th><th>Recorded</th><th>Arenas accepted</th><th>Still in progress</th><th>Kept for a better tracker</th></tr></thead>
+    <tbody>
+    {% for c in x.conds %}
+      <tr>
+        <td><b>{{ c.cond }}</b><div class="help">{{ c.cond.genotype }}</div></td>
+        <td><div style="display:flex; align-items:center; gap:10px"><span class="bar"><span style="width:{{ c.pct }}%" class="{% if c.pct >= 100 %}full{% endif %}"></span></span><b style="min-width:52px">{{ c.usable }} / {{ x.e.target_recordings }}</b></div></td>
+        <td>{{ c.recorded }}</td>
+        <td>{{ c.accepted }} of {{ c.tracked }}</td>
+        <td>{{ c.waiting|default:"—" }}</td>
+        <td>{{ c.kept|default:"—" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted" style="margin:0">No recordings yet.</p>{% endif %}
+</article>
+{% empty %}
+<div class="card"><p class="muted" style="margin:0">No experiments yet. Create one with “+ New experiment”, or while entering the details of a video.</p></div>
+{% endfor %}
+<p class="help">A recording is usable once at least one of its arenas is accepted in review.</p>
+{% endblock %}

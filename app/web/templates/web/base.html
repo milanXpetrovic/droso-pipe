@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Droso pipeline{% endblock %}</title>
+<style>
+  :root { color-scheme: light;
+    --bg:#f4f5f3; --card:#ffffff; --ink:#1d2120; --ink2:#3d4441; --muted:#5c6461; --line:#dfe2de; --line2:#eef0ee; --field:#cdd2ce;
+    --accent:#0b5c48; --accent-ink:#ffffff; --accent-bg:#e3efe9; --frame:#0e0f0f;
+    --ok:#11603f; --ok-bg:#e3f2ea; --run:#1d4f9c; --run-bg:#e2ecfb; --warn:#7a4508; --warn-bg:#fdf0dc;
+    --bad:#9c2a20; --bad-bg:#fbe6e3; --idle:#4b5350; --idle-bg:#eef0ee; --kept:#5b3fa0; --kept-bg:#eee8fa;
+    --s-done:#2f9e6e; --s-running:#3f7fe0; --s-waiting:#b9c0bc; --s-failed:#d4473a; --s-needs_you:#e0a030; --s-not_started:#e4e7e4; }
+  @media (prefers-color-scheme: dark) { :root { color-scheme: dark;
+    --bg:#1a1c1b; --card:#242726; --ink:#e8eae6; --ink2:#c9cdc8; --muted:#a3a9a5; --line:#3a3e3c; --line2:#2f3331; --field:#4a4f4c;
+    --accent:#5dcaa5; --accent-ink:#0c201a; --accent-bg:#183a30; --frame:#000000;
+    --ok:#8fdcb8; --ok-bg:#173a2b; --run:#9ec0f5; --run-bg:#1b2c47; --warn:#f3d19a; --warn-bg:#47330f;
+    --bad:#f4b2a9; --bad-bg:#4a1f1b; --idle:#c3c8c4; --idle-bg:#323634; --kept:#cdbcf5; --kept-bg:#2f2647;
+    --s-waiting:#646b67; --s-not_started:#3a3e3c; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  a { color:var(--accent); } a:hover { text-decoration-thickness:2px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  header.top { display:flex; flex-wrap:wrap; align-items:center; gap:8px 24px; padding:12px 32px; background:var(--card); border-bottom:1px solid var(--line); }
+  header.top .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:17px; color:var(--ink); text-decoration:none; }
+  header.top nav { display:flex; flex-wrap:wrap; gap:2px; flex:1; }
+  header.top nav a { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; color:var(--ink2); font-weight:500; text-decoration:none; font-size:14px; }
+  header.top nav a[aria-current="page"] { background:var(--accent-bg); color:var(--accent); font-weight:600; }
+  header.top nav .count { padding:1px 7px; border-radius:999px; background:var(--accent); color:var(--accent-ink); font-size:12px; font-weight:700; }
+  header.top .user { font-size:14px; color:var(--muted); }
+  main { max-width:1320px; margin:0 auto; padding:24px 32px 48px; }
+  @media (max-width: 700px) { header.top, main { padding-left:16px; padding-right:16px; } }
+  h1 { font-size:24px; margin:0; } h2 { font-size:16px; margin:0 0 10px; }
+  .head { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin-bottom:16px; }
+  .head .spacer { flex:1; }
+  .muted { color:var(--muted); } .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size:.9em; overflow-wrap:anywhere; }
+  .help { font-size:13px; color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:16px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:9px 14px; border-radius:8px; border:1px solid var(--accent); background:var(--accent);
+         color:var(--accent-ink); font:inherit; font-size:14px; font-weight:600; text-decoration:none; cursor:pointer; }
+  .btn.secondary { background:transparent; color:var(--ink); border-color:var(--field); }
+  .btn.small { padding:6px 10px; font-size:13px; }
+  .btn.danger { background:transparent; color:var(--bad); border-color:var(--bad); }
+  .row { display:flex; flex-wrap:wrap; gap:18px; } .row > * { min-width:0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px 16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+  input, select, textarea { width:100%; padding:9px 10px; border:1px solid var(--field); border-radius:8px; background:var(--card); color:var(--ink); font:inherit; font-size:14px; }
+  input[type=checkbox], input[type=radio] { width:auto; accent-color:var(--accent); }
+  input[disabled], select[disabled] { opacity:.75; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; color:var(--muted); font-size:12px; font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line); }
+  td { padding:9px 10px; border-bottom:1px solid var(--line2); vertical-align:top; }
+  .scroll { overflow-x:auto; }
+  .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; background:var(--ok-bg); color:var(--ok); font-size:14px; }
+  .msg.warning, .msg.check { background:var(--warn-bg); color:var(--warn); } .msg.error, .msg.bad { background:var(--bad-bg); color:var(--bad); }
+  .msg.info { background:var(--accent-bg); color:var(--accent); }
+  .errorlist { color:var(--bad); margin:4px 0 0; padding-left:16px; font-size:13px; }
+  .chip, .badge { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700;
+                  background:var(--idle-bg); color:var(--idle); }
+  .chip.ok, .chip.good, .chip.accepted { background:var(--ok-bg); color:var(--ok); } .chip.run, .chip.tracking { background:var(--run-bg); color:var(--run); }
+  .chip.check, .badge { background:var(--warn-bg); color:var(--warn); } .chip.bad, .chip.failed { background:var(--bad-bg); color:var(--bad); }
+  .chip.kept, .chip.tracking_bad { background:var(--kept-bg); color:var(--kept); }
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; background:currentColor; }
+  .steps { display:flex; gap:3px; } .steps span { flex:1; max-width:56px; height:7px; border-radius:4px; background:var(--s-not_started); }
+  .steps span[data-s=done] { background:var(--s-done); } .steps span[data-s=running] { background:var(--s-running); }
+  .steps span[data-s=waiting] { background:var(--s-waiting); } .steps span[data-s=failed] { background:var(--s-failed); }
+  .steps span[data-s=needs_you] { background:var(--s-needs_you); }
+  /* arena state colours, used on frames and thumbnails */
+  [data-a] { --a:var(--s-waiting); }
+  [data-a=good], [data-a=accepted] { --a:var(--s-done); } [data-a=tracking] { --a:var(--s-running); } [data-a=check] { --a:var(--s-needs_you); }
+  [data-a=bad], [data-a=failed] { --a:var(--s-failed); } [data-a=kept] { --a:#8d6bd1; } [data-a=excluded], [data-a=unusable] { --a:#5b5f5d; }
+  /* legacy pages (inbox, arena editing) */
+  .arena-grid { display:grid; gap:12px; } .arena { border:1px solid var(--line); border-radius:8px; padding:10px; } .arena h3 { margin:0 0 8px; font-size:15px; }
+  .frame-wrap { position:relative; line-height:0; border-radius:8px; overflow:hidden; background:var(--frame); }
+  .frame-wrap img { width:100%; height:auto; display:block; }
+  .frame-grid { position:absolute; inset:0; display:grid; }
+  .frame-cell { border:1px dashed rgba(255,255,255,.55); padding:6px; line-height:1.2; }
+  .frame-cell span { display:inline-block; background:rgba(0,0,0,.7); color:#fff; font-weight:700; padding:2px 8px; border-radius:4px; font-size:14px; }
+  .frame-cell[data-status="excluded"] { background:rgba(200,40,40,.30); } .frame-cell[data-status="empty"] { background:rgba(60,60,60,.55); }
+  {% block style %}{% endblock %}
+</style>
+</head>
+<body>
+{% with url=request.resolver_match.url_name ns=request.resolver_match.namespace %}
+<header class="top">
+  <a class="brand" href="{% url 'web:recordings' %}">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="color:var(--accent)"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1.4" fill="currentColor"/><circle cx="15" cy="14" r="1.4" fill="currentColor"/></svg>
+    Droso pipeline
+  </a>
+  {% if user.is_authenticated %}
+  <nav aria-label="Main">
+    <a href="{% url 'web:recordings' %}"{% if url == 'recordings' or url == 'recording' or ns == 'intake' and url != 'upload' %} aria-current="page"{% endif %}>Recordings</a>
+    <a href="{% url 'web:review_next' %}"{% if url == 'review_next' or url == 'review_item' %} aria-current="page"{% endif %}>Review{% if nav_review %} <span class="count">{{ nav_review }}</span>{% endif %}</a>
+    <a href="{% url 'web:experiments' %}"{% if url == 'experiments' %} aria-current="page"{% endif %}>Experiments</a>
+    <a href="{% url 'web:machines' %}"{% if url == 'machines' %} aria-current="page"{% endif %}>Machines</a>
+    <a href="{% url 'web:settings' %}"{% if url == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+  </nav>
+  <a class="btn" href="{% url 'intake:upload' %}"{% if url == 'upload' %} aria-current="page"{% endif %}>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+    Upload video
+  </a>
+  <span class="user">{{ user.get_username }}{% if user.is_staff %} · admin{% endif %}</span>
+  {% endif %}
+</header>
+{% endwith %}
+<main>
+  {% for m in messages %}<div class="msg {{ m.tags }}" role="status">{{ m }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
