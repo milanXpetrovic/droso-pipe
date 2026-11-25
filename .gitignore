@@ -222,4 +222,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 worker/worker.toml
-worker/worker.toml
+worker/*.toml
+!worker/worker.example.toml
