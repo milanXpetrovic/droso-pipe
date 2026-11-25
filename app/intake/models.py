@@ -9,6 +9,7 @@ class IncomingVideo(models.Model):
     """A video file found in incoming/<rig>/. Registered when someone enters its metadata."""
 
     class Status(models.TextChoices):
+        UPLOADING = "uploading", "Uploading"
         NEW = "new", "Waiting for metadata"
         REGISTERED = "registered", "Waiting for ingest"
         INGESTING = "ingesting", "Ingesting"

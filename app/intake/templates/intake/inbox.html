@@ -1,7 +1,32 @@
 {% extends "intake/base.html" %}
 {% load intake_extras %}
 {% block content %}
-<h1>New videos</h1>
+<div style="display:flex; justify-content:space-between; align-items:center">
+  <h1>New videos</h1>
+  <a class="btn" href="{% url 'intake:upload' %}">Upload a video</a>
+</div>
+{% if uploads %}
+<div class="card">
+  <h2 style="margin-top:0">Uploads in progress</h2>
+  <table>
+    <tr><th>Rig</th><th>File</th><th>Received</th><th>Metadata</th><th></th></tr>
+    {% for v in uploads %}
+    <tr>
+      <td>{{ v.rig }}</td>
+      <td class="mono">{{ v.file_name }}</td>
+      <td>{{ v.received|filesizeformat }} of {{ v.size_bytes|filesizeformat }}</td>
+      <td>{% if v.recording %}{{ v.recording.code }}{% else %}<span class="muted">not yet</span>{% endif %}</td>
+      <td style="white-space:nowrap">
+        <span class="help">Drop the same file on the Upload page to continue.</span>
+        <form method="post" action="{% url 'intake:upload_cancel' v.pk %}" style="display:inline" onsubmit="return confirm('Cancel this upload and delete what arrived?')">
+          {% csrf_token %}<button class="btn secondary" type="submit">Cancel</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
 <div class="card">
 {% if pending %}
 <table>
@@ -28,7 +53,7 @@
   {% endfor %}
 </table>
 {% else %}
-<p class="muted">No new videos in incoming/. Copy a video into incoming/&lt;rig&gt;/ and reload.</p>
+<p class="muted">No new videos. Use <a href="{% url 'intake:upload' %}">Upload a video</a>.</p>
 {% endif %}
 </div>
 

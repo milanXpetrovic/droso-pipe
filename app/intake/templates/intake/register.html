@@ -15,26 +15,5 @@
 </div>
 {% for w in warnings %}<div class="msg warning">{{ w }}</div>{% endfor %}
 {% if preview_video %}{% include "intake/_preview.html" %}{% endif %}
-<form method="post">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  {% for title, fields in form.grouped %}
-  <div class="card">
-    <h2 style="margin-top:0">{{ title }}</h2>
-    <div class="grid">
-      {% for f in fields %}
-      <div>
-        <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}</label>
-        {{ f }}
-        {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
-        {{ f.errors }}
-      </div>
-      {% endfor %}
-    </div>
-    {% if forloop.counter == 3 %}{% include "intake/_window_helper.html" %}{% endif %}
-  </div>
-  {% endfor %}
-  <button class="btn" type="submit">Save and check arenas</button>
-  <a class="btn secondary" href="{% url 'intake:inbox' %}">Cancel</a>
-</form>
+{% include "intake/_register_form.html" %}
 {% endblock %}

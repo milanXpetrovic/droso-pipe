@@ -449,3 +449,126 @@ class IngestTests(PreviewBase):
         out = StringIO()
         call_command("ingest", stdout=out)
         self.assertIn("ingested: 1", out.getvalue())
+
+
+class UploadTests(PreviewBase):
+    """Browser upload: chunks, resume, metadata saved during the upload, then the usual ingest."""
+
+    def video_bytes(self) -> bytes:
+        import subprocess
+        from .preview import FFMPEG
+        src = self.root / "src.mp4"
+        subprocess.run([FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=6:size=320x240:rate=10",
+                        "-pix_fmt", "yuv420p", "-y", str(src)], check=True)
+        return src.read_bytes()
+
+    def start(self, data: bytes, name=NAME, recorded_s=6.0, rig=""):
+        end_ms = int((parse_basler_name(name)["started_at"].timestamp() + recorded_s) * 1000) if parse_basler_name(name) else 0
+        return self.client.post(reverse("intake:upload_start"),
+                                {"name": name, "size": len(data), "last_modified": end_ms, "rig": rig})
+
+    def put(self, video_id, data: bytes, offset: int):
+        return self.client.put(reverse("intake:upload_chunk", args=[video_id]), data=data,
+                               content_type="application/octet-stream", HTTP_X_OFFSET=str(offset))
+
+    def send_all(self, video_id, data: bytes, offset=0, size=7000):
+        r = None
+        while offset < len(data):
+            r = self.put(video_id, data[offset:offset + size], offset)
+            self.assertEqual(r.status_code, 200, r.content)
+            offset = r.json()["offset"]
+        return r.json()
+
+    def form_data(self, **extra):
+        return {"experiment": self.exp.pk, "layout": ArenaLayout.objects.get(code="2x2").pk,
+                "condition": self.ctrl.pk, "sex": "M", "n_flies": 12, **extra}
+
+    def test_page(self):
+        r = self.client.get(reverse("intake:upload"))
+        self.assertContains(r, "Drag the video here")
+        self.assertContains(r, "R2")                                     # rig choice
+
+    def test_upload_with_metadata_saved_meanwhile_then_ingest(self):
+        from unittest import mock
+        from core.models import Asset
+        from .ingest import ingest_pending
+        data = self.video_bytes()
+        with mock.patch("core.formats.FINALIZE_SLACK_S", 0):
+            up = self.start(data, recorded_s=4.8).json()              # camera ran at 12.5 fps, file says 10
+            self.assertEqual((up["offset"], up["rig"]), (0, "R1"))      # rig from the camera's serial
+            video = IncomingVideo.objects.get(pk=up["id"])
+            self.assertEqual(video.status, IncomingVideo.Status.UPLOADING)
+            self.assertFalse((self.root / video.rel_path).exists())      # only the hidden .part so far
+            scan()
+            self.assertEqual(IncomingVideo.objects.count(), 1)           # the scanner ignores it
+
+            form = self.client.get(up["form_url"])
+            self.assertContains(form, 'id="register-form"')
+            saved = self.client.post(up["form_url"], self.form_data())
+            self.assertContains(saved, "Metadata saved")
+            video.refresh_from_db()
+            self.assertEqual(video.status, IncomingVideo.Status.UPLOADING)   # not ingestable before the last byte
+            self.assertEqual(ingest_pending(), 0)
+
+            last = self.send_all(up["id"], data)
+        self.assertTrue(last["done"] and last["registered"])
+        self.assertIn("12.50 fps", last["warning"])
+        video.refresh_from_db()
+        final = self.root / video.rel_path
+        self.assertEqual(final.read_bytes(), data)
+        self.assertAlmostEqual(final.stat().st_mtime, video.mtime.timestamp(), places=0)   # time of the recording PC
+        self.assertFalse(list(final.parent.glob(".*.part")))
+        self.assertEqual(video.status, IncomingVideo.Status.REGISTERED)
+
+        with mock.patch("core.formats.FINALIZE_SLACK_S", 0):
+            self.assertEqual(ingest_pending(), 1)
+        self.assertEqual(Asset.objects.get().meta["fps_used"], 12.5)
+
+    def test_resume_after_interruption(self):
+        data = self.video_bytes()
+        half = len(data) // 2
+        up = self.start(data).json()
+        self.assertEqual(self.put(up["id"], data[:half], 0).json(), {"offset": half, "done": False})
+        again = self.start(data).json()                                 # same file dropped again
+        self.assertEqual((again["id"], again["offset"]), (up["id"], half))
+        wrong = self.put(up["id"], data[100:200], 100)                   # an old chunk sent twice
+        self.assertEqual((wrong.status_code, wrong.json()["offset"]), (409, half))
+        self.assertTrue(self.send_all(up["id"], data, offset=half, size=5000)["done"])
+        self.assertEqual((self.root / IncomingVideo.objects.get().rel_path).read_bytes(), data)
+
+    def test_metadata_after_the_upload(self):
+        data = self.video_bytes()
+        up = self.start(data).json()
+        self.assertFalse(self.send_all(up["id"], data)["registered"])
+        video = IncomingVideo.objects.get()
+        self.assertEqual(video.status, IncomingVideo.Status.NEW)
+        self.assertTrue(video.is_stable())                              # complete: no waiting for "copying…"
+        self.assertContains(self.client.get(up["form_url"]), "Video length 0:06")
+        self.client.post(up["form_url"], self.form_data())
+        video.refresh_from_db()
+        self.assertEqual(video.status, IncomingVideo.Status.REGISTERED)
+
+    def test_cancel_removes_everything(self):
+        data = self.video_bytes()
+        up = self.start(data).json()
+        self.put(up["id"], data[:1000], 0)
+        self.client.post(up["form_url"], self.form_data())
+        inbox = self.client.get(reverse("intake:inbox"))
+        self.assertContains(inbox, "Uploads in progress")
+        self.client.post(reverse("intake:upload_cancel", args=[up["id"]]))
+        self.assertFalse(IncomingVideo.objects.exists())
+        self.assertFalse(Recording.all_objects.exists())
+        self.assertFalse(list((self.root / "incoming" / "rig1").iterdir()))
+
+    def test_refused(self):
+        data = b"x" * 100
+        self.assertEqual(self.start(data, name="notes.txt").status_code, 409)
+        r = self.start(data, name="video.mp4")                          # no camera in the name, no rig chosen
+        self.assertContains(r, "Choose the rig", status_code=409)
+        self.assertEqual(self.start(data, name="video.mp4", rig="2").json()["rig"], "R2")
+        self.drop(name="Basler acA4024-29um (23517383)_20260203_120000000.mp4")
+        r = self.start(data, name="Basler acA4024-29um (23517383)_20260203_120000000.mp4")
+        self.assertContains(r, "already waiting", status_code=409)
+        up = self.start(data).json()
+        self.assertContains(self.start(b"y" * 99), "Another file", status_code=409)
+        self.assertEqual(self.put(up["id"], b"z" * 200, 0).status_code, 409)    # more than announced

@@ -1,0 +1,165 @@
+{% extends "intake/base.html" %}
+{% block title %}Upload a video{% endblock %}
+{% block content %}
+<style>
+  .drop { border:2px dashed var(--line); border-radius:10px; padding:2.5rem 1rem; text-align:center; cursor:pointer; }
+  .drop.over { border-color:var(--accent); background:var(--ok-bg); }
+  .drop b { font-size:1.1rem; }
+  .bar { height:14px; background:var(--line); border-radius:7px; overflow:hidden; margin:.6rem 0 .3rem; }
+  .bar div { height:100%; width:0; background:var(--accent); transition:width .3s; }
+  .row { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+</style>
+
+<h1>Upload a video</h1>
+{% csrf_token %}
+
+<div class="card" id="pick">
+  <div class="row" style="margin-bottom:.8rem">
+    <div style="min-width:220px">
+      <label for="rig">Rig</label>
+      <select id="rig">
+        <option value="">From the camera in the file name</option>
+        {% for r in rigs %}<option value="{{ r.pk }}">{{ r }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <label class="drop" id="drop">
+    <b>Drag the video here</b><br><span class="muted">or click to choose it · the original Basler file, name unchanged</span>
+    <input type="file" id="file" accept=".mp4,.avi,.mkv,.mov" hidden>
+  </label>
+</div>
+
+<div class="card" id="progress" hidden>
+  <div class="row"><span class="mono" id="fname"></span><span class="muted" id="frig"></span></div>
+  <div class="bar"><div id="bar"></div></div>
+  <div id="ptext" class="muted"></div>
+  <div id="pwarn"></div>
+</div>
+
+<div id="error"></div>
+<div id="formbox"></div>
+
+<div class="card" id="done" hidden>
+  <h2 style="margin-top:0">Done</h2>
+  <p>The video is on the server with its metadata. Processing starts by itself; you can close this page.</p>
+  <a class="btn" id="arenas-link" href="#">Check arenas (optional)</a>
+  <a class="btn secondary" href="{% url 'intake:upload' %}">Upload another video</a>
+</div>
+
+<script>
+(() => {
+  const START = "{% url 'intake:upload_start' %}";
+  const csrf = document.querySelector("[name=csrfmiddlewaretoken]").value;
+  const $ = id => document.getElementById(id);
+  let busy = false, uploaded = false, saved = null;
+
+  window.addEventListener("beforeunload", e => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
+
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => { if (e.dataTransfer.files.length) begin(e.dataTransfer.files[0]); });
+  $("file").addEventListener("change", e => { if (e.target.files.length) begin(e.target.files[0]); });
+
+  function showError(msg) { $("error").innerHTML = msg ? `<div class="msg error"></div>` : ""; if (msg) $("error").firstChild.textContent = msg; }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const gb = b => (b / 1e9).toFixed(2) + " GB";
+  const hms = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+                     return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+
+  async function announce(file) {
+    const body = new FormData();
+    body.append("name", file.name); body.append("size", file.size);
+    body.append("last_modified", file.lastModified); body.append("rig", $("rig").value);
+    const r = await fetch(START, { method: "POST", body, headers: { "X-CSRFToken": csrf } });
+    const j = await r.json();
+    if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { fatal: true });
+    return j;
+  }
+
+  async function begin(file) {
+    if (busy) return;
+    showError("");
+    let up;
+    try { up = await announce(file); } catch (e) { showError(e.message); return; }
+    $("pick").hidden = true; $("progress").hidden = false;
+    $("fname").textContent = file.name; $("frig").textContent = "→ " + up.rig;
+    loadForm(up.form_url);
+    send(file, up);
+  }
+
+  async function send(file, up) {
+    busy = true;
+    let offset = up.offset, failures = 0;
+    const t0 = Date.now(), o0 = offset;
+    progress(offset, file.size, t0, o0);
+    while (offset < file.size) {
+      const end = Math.min(offset + up.chunk_bytes, file.size);
+      try {
+        const r = await fetch(up.chunk_url, { method: "PUT", body: file.slice(offset, end),
+          headers: { "X-CSRFToken": csrf, "X-Offset": offset, "Content-Type": "application/octet-stream" } });
+        const j = await r.json();
+        if (r.status === 409 && j.offset !== undefined) { offset = j.offset; continue; }   // server knows better
+        if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { fatal: r.status !== 503 });
+        offset = j.offset; failures = 0;
+        progress(offset, file.size, t0, o0);
+        if (j.done) finished(j);
+      } catch (e) {
+        if (e.fatal) { busy = false; showError("Upload stopped: " + e.message); return; }
+        failures++;
+        if (failures > 30) { busy = false; showError("The server cannot be reached. Drop the same file again later: the upload continues where it stopped."); return; }
+        const wait = Math.min(30, 2 ** failures);
+        $("ptext").textContent = `Connection problem, trying again in ${wait} s… (${gb(offset)} of ${gb(file.size)} are safe on the server)`;
+        await sleep(wait * 1000);
+        try { offset = (await announce(file)).offset; } catch (e2) { if (e2.fatal) { busy = false; showError(e2.message); return; } }
+      }
+    }
+    busy = false;
+  }
+
+  function progress(have, size, t0, o0) {
+    const pct = size ? 100 * have / size : 0;
+    $("bar").style.width = pct.toFixed(1) + "%";
+    const secs = (Date.now() - t0) / 1000, rate = secs > 1 ? (have - o0) / secs : 0;
+    const eta = rate > 0 ? ` · about ${hms((size - have) / rate)} left` : "";
+    $("ptext").textContent = `${pct.toFixed(1)} % · ${gb(have)} of ${gb(size)}` + (rate ? ` · ${(rate / 1e6).toFixed(0)} MB/s` : "") + eta;
+  }
+
+  function finished(j) {
+    uploaded = true;
+    $("ptext").textContent = "Upload complete" + (j.length ? ` · recording length ${hms(j.length)}` : "") + ".";
+    if (j.warning) $("pwarn").innerHTML = `<div class="msg warning" style="margin:.6rem 0 0"></div>`, $("pwarn").firstChild.textContent = j.warning;
+    if (j.registered && !saved) saved = true;
+    checkDone();
+  }
+
+  function checkDone() {
+    const s = $("saved");
+    if (uploaded && s) { $("done").hidden = false; $("arenas-link").href = s.dataset.arenas; }
+  }
+
+  async function loadForm(url, html) {
+    if (html === undefined) html = await (await fetch(url)).text();
+    const box = $("formbox");
+    box.innerHTML = html;
+    box.querySelectorAll("script").forEach(old => {          // scripts inserted as HTML do not run by themselves
+      const s = document.createElement("script");
+      if (old.type) s.type = old.type;
+      s.textContent = old.textContent;
+      old.replaceWith(s);
+    });
+    const reload = box.querySelector("[data-reload-form]");
+    if (reload) reload.addEventListener("click", () => loadForm(url));
+    const form = box.querySelector("#register-form");
+    if (form) form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const r = await fetch(url, { method: "POST", body: new FormData(form), headers: { "X-CSRFToken": csrf } });
+      if ((r.headers.get("Content-Type") || "").startsWith("application/json")) { showError((await r.json()).error); return; }
+      await loadForm(url, await r.text());
+      if ($("saved")) { saved = true; checkDone(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+    });
+    if ($("saved")) { saved = true; checkDone(); }
+  }
+})();
+</script>
+{% endblock %}

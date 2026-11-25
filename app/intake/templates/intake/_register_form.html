@@ -1,0 +1,29 @@
+{% load intake_extras %}
+{% if copied_from %}<div class="msg">Fields copied from the last recording on this rig ({{ copied_from.code }}). Check what changed.</div>{% endif %}
+<form method="post" id="register-form">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for title, fields in form.grouped %}
+  <div class="card">
+    <h2 style="margin-top:0">{{ title }}</h2>
+    <div class="grid">
+      {% for f in fields %}
+      <div>
+        <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}</label>
+        {{ f }}
+        {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+        {{ f.errors }}
+      </div>
+      {% endfor %}
+    </div>
+    {% if forloop.counter == 3 %}{% include "intake/_window_helper.html" %}{% endif %}
+  </div>
+  {% endfor %}
+  {% if in_upload %}
+  <button class="btn" type="submit">Save metadata</button>
+  <span class="help">You can save before the upload finishes.</span>
+  {% else %}
+  <button class="btn" type="submit">Save and check arenas</button>
+  <a class="btn secondary" href="{% url 'intake:inbox' %}">Cancel</a>
+  {% endif %}
+</form>
