@@ -81,6 +81,31 @@ class IncomingVideo(models.Model):
         return round(self.duration_s * self.fps) if self.duration_s and self.fps else None
 
     @property
+    def recorded_s(self) -> float | None:
+        """Wall-clock recording time: from the start in the file name to the file's last write."""
+        if not self.started_at or not self.mtime:
+            return None
+        return (self.mtime - self.started_at).total_seconds()
+
+    def fps_check(self) -> tuple[float | None, str | None]:
+        """(frame rate to use, warning or None); see core.formats.check_fps."""
+        from core.formats import check_fps
+        self.ensure_probe()
+        return check_fps(self.n_frames_expected, self.fps, self.recorded_s)
+
+    def real_duration(self) -> float | None:
+        """Length in real seconds. Every time a person sees or enters (windows, preview) is in these."""
+        self.ensure_probe()
+        fps, _ = self.fps_check()
+        n = self.n_frames_expected
+        return n / fps if n and fps else self.duration_s
+
+    def file_time(self, t_real: float) -> float:
+        """Real seconds -> seconds in the file's own (declared) time, for seeking in the file."""
+        fps, _ = self.fps_check()
+        return t_real * fps / self.fps if fps and self.fps else t_real
+
+    @property
     def camera(self) -> Camera | None:
         if not self.camera_serial:
             return None

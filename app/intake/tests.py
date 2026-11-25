@@ -201,12 +201,17 @@ class RegisterTests(RegisterBase):
 class PreviewBase(RegisterBase):
     """Uses a real 6-second test video made by ffmpeg."""
 
-    def make_video(self, rig="rig1", name=NAME):
+    def make_video(self, rig="rig1", name=NAME, recorded_s=6.0):
+        """recorded_s: wall-clock recording time, i.e. file written that long after the start in its name."""
         import subprocess
         from .preview import FFMPEG
         out = self.root / "incoming" / rig / name
         subprocess.run([FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=6:size=320x240:rate=10",
                         "-pix_fmt", "yuv420p", "-y", str(out)], check=True)
+        parsed = parse_basler_name(name)
+        if parsed and recorded_s is not None:
+            end = parsed["started_at"].timestamp() + recorded_s
+            os.utime(out, (end, end))
         scan(now=timezone.now() - dt.timedelta(minutes=5))
         return IncomingVideo.objects.get(file_name=name)
 
@@ -359,6 +364,35 @@ class IngestTests(PreviewBase):
         r = self.client.get(reverse("intake:frame", args=[v.pk]) + "?t=1")
         self.assertEqual(r["Content-Type"], "image/jpeg")
         self.assertContains(self.client.get(reverse("intake:inbox")), "60 frames")
+
+    def test_camera_faster_than_the_file_says(self):
+        """60 frames declared at 10 fps, but recorded in 4.8 s of real time: the camera ran at 12.5 fps."""
+        from unittest import mock
+        from core.models import Asset
+        from .ingest import ingest_pending
+        with mock.patch("core.formats.FINALIZE_SLACK_S", 0):            # the test video is only seconds long
+            v = self.make_video(recorded_s=4.8)
+            inbox = self.client.get(reverse("intake:inbox"))
+            self.assertContains(inbox, "camera recorded at 12.50 fps")
+            self.assertContains(inbox, "0:05")                           # 4.8 real seconds, not the file's 6
+            self.assertContains(self.client.get(reverse("intake:register", args=[v.pk])), "12.50 fps")
+            self.assertEqual(self.client.get(reverse("intake:frame", args=[v.pk]) + "?t=4")["Content-Type"],
+                             "image/jpeg")
+            self.post_form(v)
+            ingest_pending()
+        a = Asset.objects.get()
+        self.assertEqual((a.meta["fps"], a.meta["fps_used"], a.meta["recorded_s"]), (10.0, 12.5, 4.8))
+        self.assertIn("12.50 fps", a.warnings[0])
+
+    def test_frame_rate_unchecked_when_file_time_is_unreliable(self):
+        from core.models import Asset
+        from .ingest import ingest_pending
+        v = self.make_video(recorded_s=None)                              # file time = now, months after the name
+        self.post_form(v)
+        ingest_pending()
+        a = Asset.objects.get()
+        self.assertEqual(a.meta["fps_used"], 10.0)
+        self.assertIn("Could not check the frame rate", a.warnings[0])
 
     def test_frame_mismatch_becomes_a_warning(self):
         from unittest import mock

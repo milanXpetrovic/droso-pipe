@@ -26,6 +26,39 @@ class FormatTests(TestCase):
         errors, _ = validate_raw_video(self.meta(fps=None))
         self.assertTrue(errors)
 
+    def test_check_fps(self):
+        from .formats import check_fps, video_fps
+        # the real case: 60 min recorded, 106071 frames, file says 24 fps
+        fps, warning = check_fps(106071, 24.0, 3601.9)
+        self.assertAlmostEqual(fps, 29.449, places=2)
+        self.assertIn("29.45 fps", warning)
+        self.assertIn("60.0 min", warning)
+        self.assertEqual(check_fps(86400, 24.0, 3601.0), (24.0, None))          # 1 s to write the file: fine
+        self.assertEqual(check_fps(86400, 24.0, None), (24.0, None))            # no start in the name
+        fps, warning = check_fps(86400, 24.0, 90 * 24 * 3600)                    # file time lost in a copy
+        self.assertEqual(fps, 24.0)
+        self.assertIn("Could not check", warning)
+        self.assertEqual(video_fps({"fps": 24.0, "fps_used": 29.449}), 29.449)
+        self.assertEqual(video_fps({"fps": 24.0}), 24.0)                         # assets from before the check
+
+    def test_crop_relabels_frames_at_the_real_rate(self):
+        """A file that says 10 fps but was recorded at 12.5: every frame kept, written as 12.5 fps."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("crop_tool", REPO / "tools" / "crop" / "crop.py")
+        crop = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(crop)
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "raw.mp4"
+            subprocess.run([FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=6:size=320x240:rate=10",
+                            "-pix_fmt", "yuv420p", "-y", str(src)], check=True)
+            arenas = [{"index": 1, "crop_px": [0, 0, 160, 120], "window_s": [None, None]},
+                      {"index": 2, "crop_px": [160, 0, 160, 120], "window_s": [0.8, 4.0]}]   # real seconds
+            enc = {"codec": "libx264", "crf": 18, "preset": "ultrafast", "pix_fmt": "yuv420p"}
+            subprocess.run(crop.build_command(str(src), arenas, Path(tmp), 12.5, enc), check=True)
+            a1, a2 = Path(tmp) / "A01.mp4", Path(tmp) / "A02.mp4"
+            self.assertEqual((count_frames(a1), probe(a1)["fps"]), (60, 12.5))      # no duplicated frames
+            self.assertEqual(count_frames(a2), 40)                                  # frames 10..49
+
 
 class AssetImmutabilityTests(TestCase):
     fixtures = ["catalogs", "lab"]

@@ -5,6 +5,7 @@
 Writes OUT_DIR/A01.mp4 ... and OUT_DIR/outputs.json. Knows nothing about the database:
 everything it needs is in the two JSON files, written by the worker.
 Times stay in raw-video time: each output records the time and frame index of its first frame.
+params["fps"] is the real frame rate (checked at ingest); outputs are written at that rate, frame for frame.
 """
 
 import argparse
@@ -34,7 +35,10 @@ def build_command(src: str, arenas: list, out: Path, fps: float, enc: dict) -> l
         chain = f"[s{i}]crop={w}:{h}:{x}:{y}"
         if start is not None or end is not None:
             trim = [f"start_frame={round((start or 0) * fps)}"] + ([f"end_frame={round(end * fps)}"] if end else [])
-            chain += f",trim={':'.join(trim)},setpts=PTS-STARTPTS"
+            chain += f",trim={':'.join(trim)}"
+        # Timestamps from the frame number at the real rate: the file's own rate may be wrong (camera free-running
+        # faster than declared), and "-r" alone would then duplicate or drop frames instead of relabelling them.
+        chain += f",setpts=N/({fps}*TB)"
         graph.append(f"{chain}[o{i}]")
         outputs += ["-map", f"[o{i}]", "-c:v", enc["codec"], "-pix_fmt", enc["pix_fmt"], "-r", f"{fps}"]
         if enc["codec"] == "libx264":

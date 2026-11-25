@@ -6,6 +6,7 @@ Parameters are resolved when a worker claims the run, so changes the operator ma
 
 from domain.models import Arena
 
+from .formats import video_fps
 from .models import Tool
 
 CROP = {"code": "crop", "version": "1.0.0",
@@ -45,7 +46,7 @@ def crop_params(run) -> dict:
                        "crop_px": [even((c - 1) * W / layout.cols), even((r - 1) * H / layout.rows), cw, ch],
                        "window_s": [a.window_start_s, a.window_end_s]})
     return {"layout": layout.code, "rows": layout.rows, "cols": layout.cols, "source_size": [W, H],
-            "fps": raw.meta["fps"], "n_frames": raw.meta["n_frames"], "arenas": arenas, "encoder": ENCODER}
+            "fps": video_fps(raw.meta), "n_frames": raw.meta["n_frames"], "arenas": arenas, "encoder": ENCODER}
 
 
 def flytracker_params(run) -> dict:
@@ -54,6 +55,7 @@ def flytracker_params(run) -> dict:
     crop = run.inputs.get(type__code="crop_video")
     template = TrackerTemplate.objects.select_related("asset", "layout").get(asset__in=run.inputs.all())
     arena, layout = crop.arena, run.recording.layout
+    raw = run.recording.assets.filter(type__code="raw_video").first()
     n_flies = sum(g.n_flies or 0 for g in arena.fly_groups.all()) or None
     # num_cores is the worker's business (its own machine); chunking follows video length only (granularity),
     # so the result does not depend on which worker tracked it.
@@ -66,7 +68,7 @@ def flytracker_params(run) -> dict:
         if layout.arena_diameter_mm:
             options["arena_r_mm"] = layout.arena_diameter_mm / 2
     return {"mode": template.mode, "template": template.name, "arena": arena.index, "n_flies": n_flies,
-            "fps": crop.meta.get("fps"), "start_frame": crop.meta.get("start_frame", 0),
+            "fps": video_fps(raw.meta) if raw else crop.meta.get("fps"), "start_frame": crop.meta.get("start_frame", 0),
             "expected_ppm": template.asset.meta.get("ppm"), "options": options}
 
 

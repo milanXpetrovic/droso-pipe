@@ -25,7 +25,7 @@ def preview_context(video: IncomingVideo | None) -> dict:
     if video is None:
         return {}
     try:
-        duration = video.ensure_duration()
+        duration = video.real_duration()
     except (OSError, ValueError):
         duration = None
     if not duration:
@@ -53,7 +53,8 @@ def inbox(request):
         v.known_camera = v.camera
         if v.ready:
             try:
-                v.ensure_duration()          # read once, then cached on the row
+                v.real_length = v.real_duration()          # header read once, then cached on the row
+                v.fps_used, v.fps_warning = v.fps_check()
             except (OSError, ValueError):
                 pass
     S = IncomingVideo.Status
@@ -80,6 +81,12 @@ def register(request, pk):
         return render(request, "intake/unknown_camera.html", {"video": video, "add_url": add_url})
 
     warnings = []
+    try:
+        fps_warning = video.fps_check()[1]
+    except (OSError, ValueError):
+        fps_warning = None
+    if fps_warning:
+        warnings.append(fps_warning + " Enter all times (analysis window) in real seconds.")
     if camera and camera.usual_rig_id and camera.usual_rig_id != video.rig_id:
         warnings.append(f"Camera {camera} usually sits on {camera.usual_rig}, but this video came from "
                         f"{video.rig}. Were the cameras swapped?")
@@ -161,16 +168,16 @@ def arenas(request, code):
 def frame(request, pk):
     """JPEG of one frame; ?t=seconds, or a random time if t is missing."""
     video = get_object_or_404(IncomingVideo, pk=pk)
-    duration = video.ensure_duration()
+    duration = video.real_duration()
     if not duration:
         raise Http404("Cannot read this video.")
     try:
-        t = float(request.GET["t"])
+        t = float(request.GET["t"])                 # real seconds, like every time a person sees
     except (KeyError, ValueError):
         t = random.uniform(0.05, 0.95) * duration
     t = round(min(max(t, 0.0), max(duration - 0.5, 0.0)), 1)
     cache = Path(settings.MEDIA_ROOT) / "previews" / str(video.pk)
-    path = frame_jpeg(video_path(video.current_rel_path()), t, cache)
+    path = frame_jpeg(video_path(video.current_rel_path()), round(video.file_time(t), 2), cache)
     response = FileResponse(open(path, "rb"), content_type="image/jpeg")
     response["Cache-Control"] = "private, max-age=86400"
     return response

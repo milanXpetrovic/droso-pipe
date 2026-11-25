@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 from django.conf import settings
 from django.db import transaction
 
-from core.formats import RAW_VIDEO, asset_type, validate_raw_video
+from core.formats import RAW_VIDEO, asset_type, check_fps, validate_raw_video
 from core.models import Asset, Run, Tool
 from core.sidecar import recording_sidecar
 from core.storage import copy_with_sha256, sha256_of, write_json  # noqa: F401
@@ -101,6 +101,11 @@ def ingest_one(video: IncomingVideo) -> Asset | None:
         if errors:
             raise IngestError("Not a valid video: " + "; ".join(errors))
         log.append(f"{n_frames} frames, {info['fps']} fps declared, {meta['measured_fps']:.3f} fps measured")
+        meta["recorded_s"] = video.recorded_s
+        meta["fps_used"], fps_warning = check_fps(n_frames, info["fps"], video.recorded_s)
+        if fps_warning:
+            warnings.append(fps_warning)
+        log.append(f"recording time {video.recorded_s} s -> using {meta['fps_used']} fps")
 
         part.chmod(0o440)
         os.replace(part, dest)

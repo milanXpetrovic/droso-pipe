@@ -22,6 +22,8 @@ SPECS = {
                       "manifest.json": "this asset: checksum, size, meta, producing run"},
             "meta": {"duration_s": "float > 0", "fps": "float > 0, as declared by the file",
                      "n_frames": "int > 0, counted", "measured_fps": "n_frames / duration_s",
+                     "recorded_s": "wall-clock seconds from the start in the file name to the last write, or null",
+                     "fps_used": "the frame rate every later step uses (see check_fps)",
                      "width": "int", "height": "int", "codec": "str", "source_file_name": "str"},
         },
     },
@@ -47,6 +49,38 @@ SPECS = {
     FT_FEAT: {"name": "FlyTracker -feat.mat (native)", "spec": {}},
     FT_CALIBRATION: {"name": "FlyTracker calibration (template, or per video when the arena is re-detected)", "spec": {}},
 }
+
+
+FPS_TOLERANCE = 0.02         # 2 %; below this the declared rate is trusted
+FINALIZE_SLACK_S = 5         # the recorder may write the file a few seconds after the last frame
+
+
+def check_fps(n_frames: int | None, declared: float | None, recorded_s: float | None) -> tuple[float | None, str | None]:
+    """The frame rate to use, and a warning if the file's own rate cannot be trusted.
+
+    Cameras can run at a different rate than the one written into the file (a Basler camera that is
+    not limited free-runs at its maximum while the file says 24 fps). The file then plays slower or
+    faster than reality. The real rate is the frame count over the wall-clock recording time: from
+    the start in the file name to the file's last write.
+    """
+    if not n_frames or not declared or not recorded_s:
+        return declared, None                        # nothing to compare with (e.g. not a Basler file name)
+    real = n_frames / recorded_s if recorded_s > 0 else 0
+    ratio = real / declared
+    if abs(ratio - 1) <= max(FPS_TOLERANCE, FINALIZE_SLACK_S / max(recorded_s, 1)):
+        return declared, None
+    if not 0.4 <= ratio <= 2.5:
+        return declared, (f"Could not check the frame rate: {n_frames} frames over {recorded_s:.0f} s of recording "
+                          f"time would be {real:.2f} fps, far from the {declared:g} fps the file declares. The file "
+                          f"time was probably changed by copying. Using {declared:g} fps.")
+    return round(real, 3), (f"The camera recorded at {real:.2f} fps, but the file declares {declared:g} fps, so the "
+                            f"video plays {'slower' if real > declared else 'faster'} than reality. Using {real:.2f} fps: "
+                            f"this recording is {recorded_s / 60:.1f} min long.")
+
+
+def video_fps(meta: dict) -> float | None:
+    """Frame rate of a raw video for every later step: the checked one if there is one."""
+    return meta.get("fps_used") or meta.get("fps")
 
 
 def asset_type(key: tuple[str, int]) -> AssetType:

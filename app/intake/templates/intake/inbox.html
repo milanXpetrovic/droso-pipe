@@ -12,8 +12,8 @@
     <td class="mono">{{ v.file_name }}</td>
     <td>{% if v.known_camera %}{{ v.known_camera }}{% elif v.camera_serial %}<span class="badge">new camera {{ v.camera_serial }}</span>{% else %}<span class="muted">?</span>{% endif %}</td>
     <td>{% if v.started_at %}{{ v.started_at|date:"d.m.Y H:i:s" }}{% else %}<span class="muted">not in name</span>{% endif %}</td>
-    <td>{% if v.duration_s %}{{ v.duration_s|hms }}{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td>{{ v.fps|floatformat:"-2"|default:"—" }}</td>
+    <td>{% if v.real_length %}{{ v.real_length|hms }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if v.fps_warning %}<span class="badge" title="{{ v.fps_warning }}">{{ v.fps_used|floatformat:"-2" }} (file: {{ v.fps|floatformat:"-2" }})</span>{% else %}{{ v.fps|floatformat:"-2"|default:"—" }}{% endif %}</td>
     <td>{{ v.size_bytes|filesizeformat }}</td>
     <td style="white-space:nowrap">
       {% if v.ready %}
@@ -24,6 +24,7 @@
       {% else %}<span class="muted">copying…</span>{% endif %}
     </td>
   </tr>
+  {% if v.fps_warning %}<tr><td colspan="8"><div class="msg warning" style="margin:0">{{ v.fps_warning }}</div></td></tr>{% endif %}
   {% endfor %}
 </table>
 {% else %}
