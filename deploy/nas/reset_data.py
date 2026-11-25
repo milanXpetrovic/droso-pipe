@@ -3,9 +3,11 @@
 Keeps:    users, workers (and their tokens), tools, asset types, catalogues
           (genotypes, conditions, protocols, rigs, cameras, layouts, event kinds).
 Deletes:  experiments, recordings, arenas, fly groups, events, incoming videos, runs, assets,
-          tracker templates, and their history; on disk derived/, staging/, support/flytracker/templates/.
+          tracker templates, and their history; on disk the CONTENTS of derived/, staging/,
+          support/flytracker/templates/ (the folders stay: staging/ has permissions set by hand
+          so that workers can write into it, and nobody but the admin can recreate it).
 Raw videos are moved back to incoming/<rig>/ under their original Basler names (nothing is lost);
-raw/ is removed only when every video was moved.
+raw/ is emptied only when every video was moved.
 
 Stop the workers first. Then, inside the app container:
 
@@ -80,9 +82,10 @@ for src, dest in moves:
 dirs = ["derived", "staging", "support/flytracker/templates"] + (["raw"] if moved_all else [])
 for d in dirs:
     p = root() / d
-    print(f"remove {p}/ ({'exists' if p.exists() else 'not there'})")
+    print(f"empty {p}/ ({'exists' if p.exists() else 'not there'}; the folder itself stays)")
     if DO and p.exists():
-        shutil.rmtree(p)
+        for child in p.iterdir():
+            shutil.rmtree(child) if child.is_dir() and not child.is_symlink() else child.unlink()
 if DO and not moved_all:
     print("raw/ was KEPT because some videos could not be moved; see FAILED lines above.")
 print("done" if DO else "dry run finished, nothing changed")

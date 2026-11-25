@@ -41,16 +41,29 @@ Keep things simple; avoid overengineering.
    `incoming/rig1` / `incoming/rig2` still works (bulk import of old recordings).
    The real frame rate is checked at ingest (cameras may free-run faster than the file says).
 2. Crop per arena (worker, e.g. Rig 1 PC).
-3. Tracking: FlyTracker (MATLAB) for now; currently started manually → should run
-   automatically. Long-term: multi-GPU/multiprocess tracker.
-   Outputs: xlsx → one CSV per fly.
-4. Manual review: fix identity swaps, discard failed videos.
+3. Tracking: FlyTracker (MATLAB) for now, run automatically by workers; one calibration
+   template per layout (made once by the admin with C:\FlyTracker, never the old 1.0.5).
+   Output: trajectories/1 parquet per arena. Long-term: a better tracker (YOLO etc.) as a
+   new tool, re-run over existing crops.
+4. Manual review: judges a tool's RESULT, not the recording. Outcomes per arena and
+   tracking result: accepted / tracking bad, video good (wait for a better tracker) /
+   arena or recording unusable (excluded, video kept). Corrections (identity swaps) are
+   stored as edits next to the untouched original and are also labelled data for
+   training trackers.
 5. Social interaction detection — criteria defined at treatment level; interaction
    networks built per arena, then analysed.
 6. Behaviour classification — model in development, binary bout sequences for ~15
    behaviours. Possibly body-part annotation later.
 - Existing YOLO fly-counting model (frontend: milanxpetrovic.github.io/detect-droso-frontend)
   → show per-arena fly counts in the Inbox arena view.
+
+## Data principles
+- Raw videos are never deleted or changed (read-only in raw/). Failed or bad tracking is
+  never a reason to drop a recording: better trackers will come.
+- Every derived file is an asset that knows the tool, version and run that made it;
+  several results for the same arena (tools, versions) can coexist. Analyses use the
+  chosen, accepted one.
+- Crops may be deleted to save space: they can always be made again from raw.
 
 ## UI / ops
 - Simple web GUI to see processing status of everything (what is/isn't processed).
