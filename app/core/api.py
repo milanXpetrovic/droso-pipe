@@ -1,6 +1,6 @@
 """JSON API for workers. Every request carries  Authorization: Bearer <token>.
 
-  POST /api/runs/claim              {"tools": ["crop@1.0.0"]}      -> 200 run spec | 204 nothing to do
+  POST /api/runs/claim              {"tools": ["crop@1.1.0"]}      -> 200 run spec | 204 nothing to do
   POST /api/runs/<id>/heartbeat                                       -> {"cancel": bool}
   POST /api/runs/<id>/complete      {"files": [...], "outputs": [...], "log": "..."}
   POST /api/runs/<id>/fail          {"error": "...", "log": "..."}

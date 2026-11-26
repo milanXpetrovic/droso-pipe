@@ -71,7 +71,7 @@ class PagesBase(Store, TestCase):
         self.rec.save()
 
     def crop(self):
-        run = Run.objects.create(tool=Tool.objects.get_or_create(code="crop", version="1.0.0")[0],
+        run = Run.objects.create(tool=Tool.objects.get_or_create(code="crop", version="1.1.0")[0],
                                  status=Run.Status.DONE, recording=self.rec)
         crops = {}
         for a in self.rec.arenas.all():
@@ -264,7 +264,7 @@ class MachinesTests(PagesBase):
         self.assertContains(page, "Paused")
         self.assertContains(page, "recording software running")
 
-        crop = Run.objects.create(tool=Tool.objects.get_or_create(code="crop", version="1.0.0")[0], recording=self.rec,
+        crop = Run.objects.create(tool=Tool.objects.get_or_create(code="crop", version="1.1.0")[0], recording=self.rec,
                                   status=Run.Status.FAILED, attempts=3, error="PermissionError: access denied")
         crop.inputs.add(self.raw)
         page = self.client.get(reverse("web:machines"))
@@ -278,7 +278,7 @@ class MachinesTests(PagesBase):
         crop.refresh_from_db()
         self.assertEqual((crop.status, crop.attempts, crop.error), ("pending", 0, ""))
 
-        self.client.post("/api/runs/claim", json.dumps({"tools": ["crop@1.0.0"]}), content_type="application/json",
+        self.client.post("/api/runs/claim", json.dumps({"tools": ["crop@1.1.0"]}), content_type="application/json",
                          HTTP_AUTHORIZATION=f"Bearer {self.token}")
         self.assertEqual(Worker.objects.get().state, "")                # asking for work again: no longer paused
 

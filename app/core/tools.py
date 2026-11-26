@@ -9,10 +9,12 @@ from domain.models import Arena
 from .formats import video_fps
 from .models import Tool
 
-CROP = {"code": "crop", "version": "1.0.0",
-        "description": "Cut every valid arena out of the raw video along the layout grid, within its window.",
+CROP = {"code": "crop", "version": "1.1.0",
+        "description": "Cut every valid arena out of the raw video: the bright arena found in its grid cell plus a "
+                       "margin (the whole cell if none is found), within its window.",
         "spec": {"inputs": {"video": "raw_video/1"}, "outputs": {"A<nn>": "crop_video/1"},
-                 "params": {"arenas": "[{index, code, crop_px, window_s}]", "encoder": "ffmpeg settings"}}}
+                 "params": {"arenas": "[{index, code, cell_px, window_s}]", "margin": "fraction of the arena size",
+                            "encoder": "ffmpeg settings"}}}
 
 FLYTRACKER = {"code": "flytracker", "version": "1.0.0",
               "description": "Track one arena with FlyTracker (headless) and convert the result to trajectories/1.",
@@ -21,6 +23,7 @@ FLYTRACKER = {"code": "flytracker", "version": "1.0.0",
                                    "A<nn>-feat": "flytracker_feat/1"}}}
 
 ENCODER = {"codec": "libx264", "crf": 18, "preset": "fast", "pix_fmt": "yuv420p"}
+CROP_MARGIN = 0.05                 # of the arena's width/height, on every side
 
 
 def tool(defn: dict) -> Tool:
@@ -34,7 +37,7 @@ def even(n: float) -> int:
 
 
 def crop_params(run) -> dict:
-    """Grid crop: the frame is divided into rows x cols equal cells, A01 top-left, row by row."""
+    """The frame is divided into rows x cols equal cells, A01 top-left, row by row; the tool finds the arena in each."""
     raw = run.inputs.get(type__code="raw_video")
     rec, layout = run.recording, run.recording.layout
     W, H = raw.meta["width"], raw.meta["height"]
@@ -43,10 +46,11 @@ def crop_params(run) -> dict:
     for a in rec.arenas.filter(status=Arena.Status.OK).order_by("index"):
         r, c = layout.position(a.index)
         arenas.append({"index": a.index, "code": a.code,
-                       "crop_px": [even((c - 1) * W / layout.cols), even((r - 1) * H / layout.rows), cw, ch],
+                       "cell_px": [even((c - 1) * W / layout.cols), even((r - 1) * H / layout.rows), cw, ch],
                        "window_s": [a.window_start_s, a.window_end_s]})
     return {"layout": layout.code, "rows": layout.rows, "cols": layout.cols, "source_size": [W, H],
-            "fps": video_fps(raw.meta), "n_frames": raw.meta["n_frames"], "arenas": arenas, "encoder": ENCODER}
+            "fps": video_fps(raw.meta), "n_frames": raw.meta["n_frames"], "duration_s": raw.meta["duration_s"],
+            "arenas": arenas, "margin": CROP_MARGIN, "encoder": ENCODER}
 
 
 def flytracker_params(run) -> dict:

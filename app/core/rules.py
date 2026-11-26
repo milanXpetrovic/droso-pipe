@@ -8,9 +8,15 @@ from .tools import CROP, FLYTRACKER, tool
 
 
 def plan_runs() -> int:
-    """raw_video without a crop run -> new pending crop run. Failed runs are left for a person to requeue."""
+    """raw_video without a crop run -> new pending crop run. Failed runs are left for a person to requeue.
+
+    A new crop version crops every recording again (crops can always be made again from raw); pending runs
+    of an older version are cancelled, since no worker offers it any more.
+    """
     created = 0
     crop = tool(CROP)
+    Run.objects.filter(tool__code=crop.code, status=Run.Status.PENDING).exclude(tool=crop).update(
+        status=Run.Status.CANCELLED)
     raws = (Asset.objects.filter(type__code="raw_video", status=Asset.Status.OK)
             .exclude(recording__status=Recording.Status.REJECTED).select_related("recording"))
     for raw in raws:
@@ -23,11 +29,12 @@ def plan_runs() -> int:
 
 
 def plan_tracking() -> int:
-    """crop_video of a valid arena, with an active template for its layout -> flytracker run."""
+    """crop_video of a valid arena, made by the current crop version, with an active template -> flytracker run."""
     created = 0
     flytracker = tool(FLYTRACKER)
     templates = {t.layout_id: t for t in TrackerTemplate.objects.filter(active=True).select_related("asset")}
-    crops = (Asset.objects.filter(type__code="crop_video", status=Asset.Status.OK, arena__status=Arena.Status.OK)
+    crops = (Asset.objects.filter(type__code="crop_video", status=Asset.Status.OK, arena__status=Arena.Status.OK,
+                                  produced_by__tool=tool(CROP))
              .exclude(recording__status=Recording.Status.REJECTED).select_related("recording", "arena"))
     for crop in crops:
         template = templates.get(crop.recording.layout_id)

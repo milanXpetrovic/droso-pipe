@@ -59,6 +59,20 @@ class FormatTests(TestCase):
             self.assertEqual((count_frames(a1), probe(a1)["fps"]), (60, 12.5))      # no duplicated frames
             self.assertEqual(count_frames(a2), 40)                                  # frames 10..49
 
+    def test_crop_finds_the_arena_in_its_cell(self):
+        """Off-centre arena, reaching past its cell; a dark divider wall across it; an empty cell."""
+        import importlib.util
+        import numpy as np
+        spec = importlib.util.spec_from_file_location("crop_tool", REPO / "tools" / "crop" / "crop.py")
+        crop = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(crop)
+        yy, xx = np.mgrid[0:300, 0:400]
+        bg = np.where(np.hypot(xx - 150, yy - 70) < 60, 220.0, 15.0)          # cell (0, 0, 200, 150)
+        bg[:, 148:152] = 15.0                                                    # divider wall
+        bg[300 - 20:, 400 - 20:] = 220.0                                         # a reflection in another cell
+        self.assertEqual(crop.find_arena(bg, (0, 0, 200, 150)), (91, 11, 119, 119))
+        self.assertIsNone(crop.find_arena(np.full((300, 400), 15.0), (0, 0, 200, 150)))
+
 
 class AssetImmutabilityTests(TestCase):
     fixtures = ["catalogs", "lab"]
@@ -103,7 +117,8 @@ T0 = dt.datetime(2026, 2, 3, 10, 15, 7, tzinfo=dt.timezone.utc)
 
 
 class Store:
-    """A recording with a real 640x480, 10 fps, 6 s raw video already ingested."""
+    """A recording with a real 640x480, 10 fps, 6 s raw video already ingested: four white arenas
+    (radius 90 px, centred in the 2x2 grid cells) on black."""
 
     fixtures = ["catalogs", "lab"]
 
@@ -123,7 +138,8 @@ class Store:
         rel = f"raw/2026/02/{self.rec.code}/video.mp4"
         path = self.root / rel
         path.parent.mkdir(parents=True)
-        subprocess.run([FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=6:size=640x480:rate=10",
+        subprocess.run([FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:size=640x480:rate=10:duration=6",
+                        "-vf", "geq=lum='if(lt(hypot(mod(X,320)-160,mod(Y,240)-120),90),230,16)':cb=128:cr=128",
                         "-pix_fmt", "yuv420p", "-y", str(path)], check=True)
         ingest_run = Run.objects.create(tool=Tool.objects.create(code="ingest", version="1.0.0"),
                                         status=Run.Status.DONE, recording=self.rec)
@@ -131,7 +147,7 @@ class Store:
         self.raw = Asset.objects.create(type=asset_type(RAW_VIDEO), rel_path=rel, sha256=sha256_of(path),
                                         size_bytes=path.stat().st_size, meta=meta, recording=self.rec,
                                         produced_by=ingest_run)
-        self.worker = Worker(name="rig1-win", tools=["crop@1.0.0"])
+        self.worker = Worker(name="rig1-win", tools=["crop@1.1.0"])
         self.token = self.worker.new_token()
         self.worker.save()
 
@@ -147,7 +163,7 @@ class Store:
 class ApiTests(Store, TestCase):
     def test_token_required(self):
         self.assertEqual(self.client.post("/api/runs/claim", "{}", content_type="application/json").status_code, 401)
-        self.assertEqual(self.api("runs/claim", {"tools": ["crop@1.0.0"]}, token="wrong").status_code, 401)
+        self.assertEqual(self.api("runs/claim", {"tools": ["crop@1.1.0"]}, token="wrong").status_code, 401)
 
     def test_plan_and_claim_crop(self):
         self.assertEqual((plan_runs(), plan_runs()), (1, 0))                  # idempotent
@@ -157,40 +173,41 @@ class ApiTests(Store, TestCase):
         a2 = self.rec.arenas.get(index=2)
         a2.window_start_s, a2.window_end_s = 1.0, 4.0
         a2.save()
-        spec = self.api("runs/claim", {"tools": ["crop@1.0.0"]}).json()
+        spec = self.api("runs/claim", {"tools": ["crop@1.1.0"]}).json()
         self.assertEqual((spec["tool"], spec["recording"], spec["inputs"][0]["rel_path"]),
                          ("crop", self.rec.code, self.raw.rel_path))
         arenas = {a["index"]: a for a in spec["params"]["arenas"]}
         self.assertEqual(sorted(arenas), [1, 2, 4])                          # excluded arena 3 is not cropped
-        self.assertEqual(arenas[1]["crop_px"], [0, 0, 320, 240])
-        self.assertEqual(arenas[4]["crop_px"], [320, 240, 320, 240])
+        self.assertEqual(arenas[1]["cell_px"], [0, 0, 320, 240])
+        self.assertEqual(arenas[4]["cell_px"], [320, 240, 320, 240])
+        self.assertEqual((spec["params"]["margin"], spec["params"]["duration_s"]), (0.05, 6.0))
         self.assertEqual(arenas[2]["window_s"], [1.0, 4.0])
-        self.assertEqual(self.api("runs/claim", {"tools": ["crop@1.0.0"]}).status_code, 204)   # nothing left
+        self.assertEqual(self.api("runs/claim", {"tools": ["crop@1.1.0"]}).status_code, 204)   # nothing left
 
     def test_worker_only_gets_tools_it_is_allowed(self):
         plan_runs()
         self.worker.tools = []
         self.worker.save()
-        self.assertEqual(self.api("runs/claim", {"tools": ["crop@1.0.0"]}).status_code, 204)
+        self.assertEqual(self.api("runs/claim", {"tools": ["crop@1.1.0"]}).status_code, 204)
 
     def test_fail_retries_then_gives_up(self):
         plan_runs()
         for attempt in range(1, 4):
-            spec = self.api("runs/claim", {"tools": ["crop@1.0.0"]}).json()
+            spec = self.api("runs/claim", {"tools": ["crop@1.1.0"]}).json()
             status = self.api(f"runs/{spec['run']}/fail", {"error": "boom"}).json()["status"]
         self.assertEqual(status, "failed")
         self.assertEqual(Run.objects.get(tool__code="crop").attempts, 3)
 
     def test_silent_worker_is_requeued(self):
         plan_runs()
-        spec = self.api("runs/claim", {"tools": ["crop@1.0.0"]}).json()
+        spec = self.api("runs/claim", {"tools": ["crop@1.1.0"]}).json()
         Run.objects.filter(pk=spec["run"]).update(heartbeat_at=timezone.now() - dt.timedelta(minutes=30))
         self.assertEqual(requeue_stale(), 1)
         self.assertEqual(Run.objects.get(pk=spec["run"]).status, Run.Status.PENDING)
 
     def test_commit_rejects_tampered_files(self):
         plan_runs()
-        spec = self.api("runs/claim", {"tools": ["crop@1.0.0"]}).json()
+        spec = self.api("runs/claim", {"tools": ["crop@1.1.0"]}).json()
         staging = self.root / spec["staging"]
         staging.mkdir()
         (staging / "A01.mp4").write_bytes(b"not what was reported")
@@ -228,7 +245,7 @@ class WorkerEndToEnd(Store, LiveServerTestCase):
         w = load_worker()
         scratch = Path(self.tmp.name) / "scratch"
         cfg = {"name": "rig1-win", "server": self.live_server_url, "token": self.token, "scratch": str(scratch),
-               "tools": {"crop@1.0.0": {"command": [sys.executable, str(REPO / "tools" / "crop" / "crop.py")]}},
+               "tools": {"crop@1.1.0": {"command": [sys.executable, str(REPO / "tools" / "crop" / "crop.py")]}},
                "storage": {"mode": "path", "root": str(self.root)}}
         self.assertTrue(w.work_once(cfg, w.Api(cfg["server"], cfg["token"]), w.Storage(cfg["storage"])))
         run = Run.objects.get(tool__code="crop")
@@ -241,7 +258,11 @@ class WorkerEndToEnd(Store, LiveServerTestCase):
         self.assertEqual(sorted(crops), [1, 2, 4])
         self.assertEqual([crops[i].meta["n_frames"] for i in (1, 2, 4)], [60, 30, 60])   # window 1-4 s = 30 frames
         self.assertEqual((crops[2].meta["t_offset_s"], crops[2].meta["start_frame"]), (1.0, 10))
-        self.assertEqual((crops[1].meta["width"], crops[1].meta["height"]), (320, 240))
+        # the arena (diameter ~180 px) plus 5 % on every side, not the whole 320x240 cell
+        x, y, w, h = crops[4].meta["crop_px"]
+        self.assertTrue(190 <= w <= 200 and 190 <= h <= 200, crops[4].meta["crop_px"])
+        self.assertTrue(abs(x + w / 2 - 480) <= 4 and abs(y + h / 2 - 360) <= 4, crops[4].meta["crop_px"])
+        self.assertEqual((crops[1].meta["width"], crops[1].meta["height"]), tuple(crops[1].meta["crop_px"][2:]))
         self.assertTrue(all(not c.warnings for c in crops.values()), [c.warnings for c in crops.values()])
         f = self.root / crops[1].rel_path
         self.assertEqual(sha256_of(f), crops[1].sha256)
@@ -384,7 +405,7 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
             size_bytes=(self.root / tmpl_rel).stat().st_size, meta={"ppm": 10.0, "arena_r_px": 300.0},
             produced_by=tmpl_run)
         # one crop per arena, as the crop step would have made them
-        crop_run = Run.objects.create(tool=Tool.objects.create(code="crop", version="1.0.0"), status=Run.Status.DONE,
+        crop_run = Run.objects.create(tool=Tool.objects.create(code="crop", version="1.1.0"), status=Run.Status.DONE,
                                       recording=self.rec)
         for a in self.rec.arenas.all():
             rel = f"derived/{self.rec.code}/crop/1.0.0-run{crop_run.pk}/A{a.index:02d}.mp4"

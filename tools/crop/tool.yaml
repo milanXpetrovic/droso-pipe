@@ -1,14 +1,17 @@
 code: crop
-version: 1.0.0
+version: 1.1.0
 description: >
-  Cut every valid arena out of the raw video along the layout grid (A01 top-left, row by row),
-  within each arena's analysis window. One decode of the source, one encode per arena.
+  Cut every valid arena out of the raw video (A01 top-left, row by row), within each arena's analysis
+  window: the bright arena found around its layout grid cell on a background image, plus a margin on
+  every side; the whole cell if no arena is found (with a warning). One decode, one encode per arena.
 inputs:
   video: raw_video/1
 outputs:
   "A<nn>": crop_video/1
 params:
-  arenas: "[{index, code, crop_px: [x, y, w, h], window_s: [start, end]}]  (filled in by the server)"
+  arenas: "[{index, code, cell_px: [x, y, w, h], window_s: [start, end]}]  (filled in by the server)"
+  margin: "fraction of the arena's width/height added on every side, e.g. 0.05"
+  source_size, duration_s, fps: "of the raw video (filled in by the server)"
   encoder: "{codec, crf, preset, pix_fmt}"
 run: python crop.py --inputs {inputs} --params {params} --out {out}
-requires: Python 3.10+, ffmpeg (from the imageio-ffmpeg package or on PATH)
+requires: Python 3.10+, numpy, ffmpeg (from the imageio-ffmpeg package or on PATH)

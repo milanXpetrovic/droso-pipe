@@ -14,7 +14,7 @@ Keep things simple; avoid overengineering.
 - **NAS**: TrueNAS SCALE at 10.11.48.18 (faculty network). Pool `lab`, dataset
   `videos`, shared via SMB (Windows) and NFS (milky). Central station: hosts the
   lightweight web app (Django metadata-entry app already deployed and running here).
-- **milky**: Linux compute server (193.198.209.39, different subnet), strong CPU +
+- **infocov** (user account `milky`, often just called "milky"): Linux compute server (193.198.209.39, different subnet), strong CPU +
   GPUs. I'm a regular user, no sudo/root. MATLAB in a Docker container. Does heavy compute.
 - **Raspberry Pi**: logs lab light, temperature, humidity — should be included.
 
@@ -24,8 +24,10 @@ Keep things simple; avoid overengineering.
   White arenas on black background.
 - Recordings 20–30 min (may grow to 60–120), ~30 GB raw each, 20+ videos per
   strain/treatment.
-- Cropping: split frame evenly along layout grid. Slight arena shift between videos
-  is acceptable. No arena-detection algorithm.
+- Cropping (crop@1.1.0): the layout grid says roughly where each arena is; the crop tool finds
+  the bright arena around its cell (threshold on a median background image) and cuts it with 5 %
+  margin on every side, so arenas fill their crops. If none is found it cuts the whole grid cell,
+  with a warning. Slight arena shift between videos is fine.
 - Metadata hierarchy: treatment/experiment → video → arena(s) → fly(ies).
   Previously stored as JSON next to each video from my PyQt GUI; new model should
   stay close to that, slightly refined.

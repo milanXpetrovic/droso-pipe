@@ -17,7 +17,7 @@ root = '\\lab-nas\videos'              # a server name different from the one Z:
 # remote = "nas-worker:videos"
 # rclone = "/home/milky/bin/rclone"
 
-[tools."crop@1.0.0"]
+[tools."crop@1.1.0"]
 command = ["python", 'C:\droso-pipe\tools\crop\crop.py']
 
 [tools."flytracker@1.0.0"]

@@ -6,7 +6,7 @@ recording software runs and, optionally, outside its active hours.
 
 ## Rig 1 PC (Windows)
 
-1. **Register the worker.** Admin → Workers → Add: name `rig1-win`, tools `["crop@1.0.0"]`, Save.
+1. **Register the worker.** Admin → Workers → Add: name `rig1-win`, tools `["crop@1.1.0"]`, Save.
    The token is shown once in a yellow message; copy it.
 
 2. **Code and Python.** Put the repository at `C:\droso-pipe` (git clone, or copy `worker\` and `tools\`).
@@ -35,13 +35,15 @@ recording software runs and, optionally, outside its active hours.
 
         py C:\droso-pipe\worker\droso_worker.py --config C:\droso-pipe\worker\worker.toml --once
 
-6. **Start automatically.** Task Scheduler → Create Task:
-   - General: run only when user is logged on (the share connection belongs to the user)
-   - Trigger: At log on
-   - Action: program `cmd.exe`, arguments
-     `/c py C:\droso-pipe\worker\droso_worker.py --config C:\droso-pipe\worker\worker.toml >> C:\w\worker.log 2>&1`
-   - Settings: if the task fails, restart every 1 minute; do not stop the task if it runs long
-   - Antivirus: exclude `C:\w\` (temporary files)
+6. **Start automatically.** In a normal PowerShell window (not "Run as administrator", or the worker
+   will not see the `worker` connection to the NAS):
+
+        powershell -ExecutionPolicy Bypass -File C:\droso-pipe\worker\install-task.ps1
+
+   This creates the task `droso-worker`: starts at log on, restarts every minute if it stops, logs to
+   `C:\w\worker.log`. The Machines page shows what it does. Remove with
+   `Unregister-ScheduledTask -TaskName droso-worker -Confirm:$false`.
+   Antivirus: exclude `C:\w\` (temporary files).
 
 ## milky (Linux, no root)
 
