@@ -101,7 +101,7 @@ import tempfile
 from pathlib import Path
 
 from django.conf import settings
-from django.test import LiveServerTestCase, override_settings
+from django.test import LiveServerTestCase, SimpleTestCase, override_settings
 from django.utils import timezone
 
 from domain.models import ArenaLayout, Camera, Condition, Experiment, Recording, Rig
@@ -228,6 +228,28 @@ def load_worker():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class WorkerCancelTests(SimpleTestCase):
+    def test_cancel_stops_what_the_tool_started(self):
+        """Like FlyTracker: the tool starts MATLAB, which keeps the output pipe open. A cancel must stop both,
+        or the worker waits (silent, offline) until MATLAB finishes on its own."""
+        import threading
+        import time
+        w = load_worker()
+        grandchild = "import time; time.sleep(120)"
+        tool = (f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+                f"print('started', flush=True); time.sleep(120)")
+        proc = w.start_tool([sys.executable, "-c", tool])
+        cancelled, done = threading.Event(), threading.Event()
+        threading.Thread(target=w.stop_when_cancelled, args=(proc, cancelled, done), daemon=True).start()
+        t0 = time.monotonic()
+        threading.Timer(1.0, cancelled.set).start()
+        lines = list(proc.stdout)                       # ends only when every holder of the pipe is gone
+        done.set()
+        proc.wait()
+        self.assertEqual(lines, ["started\n"])
+        self.assertLess(time.monotonic() - t0, 30)
 
 
 class WorkerEndToEnd(Store, LiveServerTestCase):

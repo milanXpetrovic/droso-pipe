@@ -112,13 +112,41 @@ def sha256_of(path: Path) -> str:
 
 
 def heartbeat(api: Api, run_id: int, stop: threading.Event, cancelled: threading.Event, every: int = 60):
+    """Until the run ends. Keeps beating after a cancel too: the server then still sees this machine as online."""
     while not stop.wait(every):
         try:
-            if api.post(f"runs/{run_id}/heartbeat").get("cancel"):
+            if api.post(f"runs/{run_id}/heartbeat").get("cancel") and not cancelled.is_set():
+                log(f"run {run_id}: cancelled by the server, stopping the tool")
                 cancelled.set()
-                return
         except Exception as e:  # noqa: BLE001 - a missed heartbeat is not fatal
             log(f"heartbeat failed: {e}")
+
+
+def start_tool(cmd: list) -> subprocess.Popen:
+    """In its own process group, so a cancel can stop everything it started (MATLAB and its pool workers)."""
+    extra = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", **extra)
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    """The tool and every process it started: those keep the output pipe open, so killing only the tool
+    would leave the worker waiting for MATLAB to finish on its own."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+    else:
+        import signal
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    proc.kill()
+
+
+def stop_when_cancelled(proc: subprocess.Popen, cancelled: threading.Event, done: threading.Event):
+    while not done.is_set():
+        if cancelled.wait(5):
+            kill_tree(proc)
+            return
 
 
 def execute(cfg: dict, api: Api, storage: Storage, spec: dict) -> None:
@@ -139,11 +167,14 @@ def execute(cfg: dict, api: Api, storage: Storage, spec: dict) -> None:
         cmd = [*cfg["tools"][tool_key]["command"],
                "--inputs", str(work / "inputs.json"), "--params", str(work / "params.json"), "--out", str(out)]
         log(f"run {run_id}: {tool_key} for {spec.get('recording')}")
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-        for line in proc.stdout:
-            output_lines.append(line.rstrip())
-            if cancelled.is_set():
-                proc.kill()
+        proc = start_tool(cmd)
+        tool_done = threading.Event()
+        threading.Thread(target=stop_when_cancelled, args=(proc, cancelled, tool_done), daemon=True).start()
+        try:
+            for line in proc.stdout:            # a tool may print nothing for a long time: cancel does not wait
+                output_lines.append(line.rstrip())
+        finally:
+            tool_done.set()
         if proc.wait() != 0:
             raise RuntimeError("cancelled by the server" if cancelled.is_set() else f"tool exited with {proc.returncode}")
 
