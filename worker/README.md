@@ -40,8 +40,8 @@ recording software runs and, optionally, outside its active hours.
 
         powershell -ExecutionPolicy Bypass -File C:\droso-pipe\worker\install-task.ps1
 
-   This creates the task `droso-worker`: starts at log on, restarts every minute if it stops, logs to
-   `C:\w\worker.log`. The Machines page shows what it does. Remove with
+   This creates the task `droso-worker`: starts at log on without a window (`run-worker.ps1`), restarts the
+   worker a minute after it stops, logs to `C:\w\worker.log`. Run it again after changing `worker.toml`. The Machines page shows what it does. Remove with
    `Unregister-ScheduledTask -TaskName droso-worker -Confirm:$false`.
    Antivirus: exclude `C:\w\` (temporary files).
 

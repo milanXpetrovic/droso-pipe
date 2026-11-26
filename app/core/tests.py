@@ -434,6 +434,8 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         self.assertEqual(plan_tracking(), 0)
 
     def test_circle_mode_end_to_end(self):
+        self.template_asset.meta["ppm"] = 9.0                   # the calibrator's ruler: ignored in circle mode
+        self.template_asset.save()
         TrackerTemplate.objects.create(name="t", layout=self.rec.layout, mode="circle", asset=self.template_asset)
         excluded = self.rec.arenas.get(index=4)
         excluded.status = "excluded"
@@ -451,7 +453,7 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         p = run.params
         self.assertEqual((p["mode"], p["n_flies"], p["options"]["arena_r_mm"], p["options"]["force_arena_calib"]),
                          ("circle", 5, 30.0, True))
-        self.assertEqual((p["fps"], p["start_frame"], p["expected_ppm"]), (10.0, 100, 10.0))
+        self.assertEqual((p["fps"], p["start_frame"], p["expected_ppm"]), (10.0, 100, 10.0))   # r 300 px / 30 mm
         self.assertNotIn("num_cores", p["options"])                            # the worker decides
         self.assertNotIn("num_chunks", p["options"])                           # chunks follow video length only
         self.assertEqual(p["options"]["granularity"], 10000)

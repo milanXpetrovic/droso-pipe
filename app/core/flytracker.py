@@ -44,9 +44,6 @@ def template_warnings(info: dict, mode: str, arena_diameter_mm: float | None) ->
             if x - r < -2 or y - r < -2 or x + r > size[0] + 2 or y + r > size[1] + 2:
                 warnings.append(f"The arena circle (radius {r:.0f} px at {x:.0f}, {y:.0f}) extends beyond the "
                                 f"{size[0]}x{size[1]} image: the calibrator probably found an outer border, not the arena.")
-        if r and arena_diameter_mm:
-            implied = 2 * r / info["ppm"]
-            if abs(implied - arena_diameter_mm) / arena_diameter_mm > 0.05:
-                warnings.append(f"Radius {r:.0f} px at {info['ppm']:.2f} px/mm means a {implied:.1f} mm arena, but the "
-                                f"layout says {arena_diameter_mm:g} mm.")
+        # The calibrator's own scale (a ruler drawn by hand) is not used in circle mode: tracking takes it from
+        # the arena found in each video and the layout's diameter.
     return warnings
