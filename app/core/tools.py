@@ -67,18 +67,19 @@ def flytracker_params(run) -> dict:
                "save_xls": False, "save_JAABA": False, "save_seg": False, "n_flies": n_flies,
                "min_fractional_arena_size": template.min_fractional_arena_size,
                "max_fractional_arena_size": template.max_fractional_arena_size}
-    expected_ppm = template.asset.meta.get("ppm")
     if template.mode == TrackerTemplate.Mode.CIRCLE:
         options["force_arena_calib"] = True
-        if layout.arena_diameter_mm:
+        # FlyTracker finds the white circle in every video and takes the scale from it: radius in px / arena_r_mm.
+        # That circle is the outer rim of the arena (e.g. 65 mm around a 60 mm floor), so its real size comes
+        # from the template (its radius in px over the scale measured when calibrating), not from the layout.
+        m = template.asset.meta
+        if m.get("arena_r_px") and m.get("ppm"):
+            options["arena_r_mm"] = round(m["arena_r_px"] / m["ppm"], 3)
+        elif layout.arena_diameter_mm:
             options["arena_r_mm"] = layout.arena_diameter_mm / 2
-            # FlyTracker takes the scale from the arena it finds (radius / arena_r_mm), so that is what to expect,
-            # not the calibrator's ruler, which a person drew by hand.
-            if template.asset.meta.get("arena_r_px"):
-                expected_ppm = template.asset.meta["arena_r_px"] / options["arena_r_mm"]
     return {"mode": template.mode, "template": template.name, "arena": arena.index, "n_flies": n_flies,
             "fps": video_fps(raw.meta) if raw else crop.meta.get("fps"), "start_frame": crop.meta.get("start_frame", 0),
-            "expected_ppm": expected_ppm, "options": options}
+            "expected_ppm": template.asset.meta.get("ppm"), "options": options}
 
 
 PARAMS = {"crop": crop_params, "flytracker": flytracker_params}

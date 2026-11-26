@@ -351,6 +351,13 @@ class TemplateAdminTests(Store, TestCase):
         self.assertTrue(f.exists())
         self.assertEqual(sha256_of(f), t.asset.sha256)
 
+    def test_circle_size_against_the_arena(self):
+        from .flytracker import template_warnings
+        rim = {"ppm": 14.14, "arena_r_px": 459.0, "arena_centre_px": [504.0, 504.0], "image_size_px": [1006, 1006]}
+        self.assertEqual(template_warnings(rim, "circle", 60), [])                # 65 mm rim around a 60 mm floor
+        small = {**rim, "ppm": 18.0}                                              # 51 mm: smaller than the floor
+        self.assertTrue(any("51.0 mm across" in w for w in template_warnings(small, "circle", 60)))
+
     def test_outer_border_template_is_flagged(self):
         r = self.upload("border", calibration_file(ppm=12.82, r=798.0, centre_yx=(553, 833), size=(2012, 1518)))
         t = TrackerTemplate.objects.get()
@@ -434,8 +441,6 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         self.assertEqual(plan_tracking(), 0)
 
     def test_circle_mode_end_to_end(self):
-        self.template_asset.meta["ppm"] = 9.0                   # the calibrator's ruler: ignored in circle mode
-        self.template_asset.save()
         TrackerTemplate.objects.create(name="t", layout=self.rec.layout, mode="circle", asset=self.template_asset)
         excluded = self.rec.arenas.get(index=4)
         excluded.status = "excluded"
@@ -453,7 +458,7 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         p = run.params
         self.assertEqual((p["mode"], p["n_flies"], p["options"]["arena_r_mm"], p["options"]["force_arena_calib"]),
                          ("circle", 5, 30.0, True))
-        self.assertEqual((p["fps"], p["start_frame"], p["expected_ppm"]), (10.0, 100, 10.0))   # r 300 px / 30 mm
+        self.assertEqual((p["fps"], p["start_frame"], p["expected_ppm"]), (10.0, 100, 10.0))
         self.assertNotIn("num_cores", p["options"])                            # the worker decides
         self.assertNotIn("num_chunks", p["options"])                           # chunks follow video length only
         self.assertEqual(p["options"]["granularity"], 10000)
@@ -481,6 +486,22 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         page = self.client.get("/inbox/tracking/").content.decode()
         self.assertIn("A01", page)
         self.assertIn("<b>2</b>", page)
+
+    def test_circle_size_comes_from_the_template(self):
+        """The circle found is the outer rim (here 64 mm across, around a 60 mm floor): its size and the scale come
+        from the calibration, not from the layout's arena diameter."""
+        self.template_asset.meta = {"ppm": 9.375, "arena_r_px": 300.0}           # 300 px / 9.375 px/mm = 32 mm
+        self.template_asset.save()
+        TrackerTemplate.objects.create(name="t", layout=self.rec.layout, mode="circle", asset=self.template_asset)
+        plan_tracking()
+        run = Run.objects.filter(tool__code="flytracker", arena__index=1).get()
+        Run.objects.filter(tool__code="flytracker").exclude(pk=run.pk).update(status=Run.Status.CANCELLED)
+        self.run_worker()
+        run.refresh_from_db()
+        self.assertEqual((run.params["options"]["arena_r_mm"], run.params["expected_ppm"]), (32.0, 9.375))
+        commit_pending()
+        traj = Asset.objects.get(type__code="trajectories")
+        self.assertFalse(any("Scale" in w for w in traj.warnings), traj.warnings)
 
     def test_wrong_scale_and_fly_count_are_flagged(self):
         TrackerTemplate.objects.create(name="t", layout=self.rec.layout, mode="circle", asset=self.template_asset)
