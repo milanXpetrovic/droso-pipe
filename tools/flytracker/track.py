@@ -22,6 +22,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from convert import calibration_info, to_table, write_parquet  # noqa: E402
 
 PPM_TOLERANCE = 0.05
+# Each parallel MATLAB worker holds one chunk (options.granularity frames, set by the server) in memory.
+# Measured on Rig 1: 2000-frame chunks of a 12-fly arena peak at 2.2 GB per worker. More flies, more memory.
+GB_PER_CORE = 2.5
+GB_PER_CORE_FLIES = 12
+RESERVE_GB = 3          # MATLAB's own process and whatever else the machine runs
 
 
 def physical_cores() -> int:
@@ -36,12 +41,31 @@ def physical_cores() -> int:
     return max(1, (os.cpu_count() or 2) // 2)
 
 
+def available_gb():
+    try:
+        import psutil
+        return psutil.virtual_memory().available / 1e9
+    except ImportError:
+        return None
+
+
+def cores_to_use(max_cores: int, gb_per_core: float, n_flies, free_gb) -> int:
+    """As many parallel workers as fit in the memory free right now, at most max_cores, at least 1."""
+    if not gb_per_core or free_gb is None:
+        return max_cores
+    need = gb_per_core * max(1.0, (n_flies or 0) / GB_PER_CORE_FLIES)
+    return max(1, min(max_cores, int((free_gb - RESERVE_GB) // need)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--matlab", default="matlab")
     ap.add_argument("--flytracker", required=True, help="folder with FlyTracker's modpath.m")
     ap.add_argument("--cores", type=int, default=max(1, physical_cores() - 2),
-                    help="CPU cores for FlyTracker on THIS machine (default: physical cores minus two)")
+                    help="at most this many CPU cores (default: physical cores minus two); "
+                         "fewer if the free memory is not enough")
+    ap.add_argument("--gb-per-core", type=float, default=GB_PER_CORE,
+                    help=f"memory one FlyTracker worker needs for {GB_PER_CORE_FLIES} flies (0: do not check memory)")
     ap.add_argument("--inputs", required=True)
     ap.add_argument("--params", required=True)
     ap.add_argument("--out", required=True)
@@ -61,7 +85,11 @@ def main():
         shutil.copyfile(video["path"], local_video)
         local_calib = work / "template-calibration.mat"
         shutil.copyfile(template["path"], local_calib)
-        options = {**params["options"], "num_cores": args.cores}
+        free = available_gb()
+        cores = cores_to_use(args.cores, args.gb_per_core, params.get("n_flies"), free)
+        print(f"using {cores} of at most {args.cores} cores"
+              + (f" ({free:.1f} GB memory free)" if free is not None else ""), flush=True)
+        options = {**params["options"], "num_cores": cores}
         job = {"flytracker_dir": args.flytracker, "video": str(local_video), "calibration": str(local_calib),
                "out_dir": str(work / "result"), "options": options}
         job_file = work / "job.json"
@@ -92,7 +120,7 @@ def main():
                 shutil.copyfile(f, out / f.name)
 
         arena = params["arena"]
-        meta = {**summary, "calibration": calib, "mode": params["mode"], "cores": args.cores,
+        meta = {**summary, "calibration": calib, "mode": params["mode"], "cores": cores,
                 "tool_warnings": warnings}
         outputs = [{"name": f"{name}-trajectories", "type": "trajectories/1", "file": f"{name}-trajectories.parquet",
                     "arena": arena, "meta": meta},

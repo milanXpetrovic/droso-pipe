@@ -252,6 +252,20 @@ class WorkerCancelTests(SimpleTestCase):
         self.assertLess(time.monotonic() - t0, 30)
 
 
+class FlyTrackerCoresTests(SimpleTestCase):
+    def test_cores_fit_the_free_memory(self):
+        spec = importlib.util.spec_from_file_location("track", REPO / "tools" / "flytracker" / "track.py")
+        track = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(track)
+        f = track.cores_to_use
+        self.assertEqual(f(14, 2.5, 12, 200.0), 14)          # a big server: the core limit
+        self.assertEqual(f(14, 2.5, 12, 28.0), 10)           # Rig 1 with 28 GB free: (28 - 3) / 2.5
+        self.assertEqual(f(14, 2.5, 24, 28.0), 5)            # twice the flies, twice the memory per core
+        self.assertEqual(f(14, 2.5, None, 28.0), 10)         # unknown fly count: the 12-fly figure
+        self.assertEqual(f(14, 2.5, 12, 4.0), 1)             # never less than one
+        self.assertEqual((f(3, 0, 12, 4.0), f(3, 2.5, 12, None)), (3, 3))   # check off / psutil missing
+
+
 class WorkerEndToEnd(Store, LiveServerTestCase):
     """The real worker program, talking HTTP to a live server, running the real crop tool."""
 
@@ -449,7 +463,7 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
 
     def worker_cfg(self, **extra):
         cmd = [sys.executable, str(REPO / "tools" / "flytracker" / "track.py"), "--matlab", str(self.fake_matlab),
-               "--flytracker", self.tmp.name, "--cores", "3"]
+               "--flytracker", self.tmp.name, "--cores", "3", "--gb-per-core", "0"]
         return {"name": "rig1-win", "server": self.live_server_url, "token": self.token,
                 "scratch": str(Path(self.tmp.name) / "scratch"), "tools": {"flytracker@1.0.0": {"command": cmd}},
                 "storage": {"mode": "path", "root": str(self.root)}, **extra}
@@ -483,7 +497,7 @@ class TrackingEndToEnd(Store, LiveServerTestCase):
         self.assertEqual((p["fps"], p["start_frame"], p["expected_ppm"]), (10.0, 100, 10.0))
         self.assertNotIn("num_cores", p["options"])                            # the worker decides
         self.assertNotIn("num_chunks", p["options"])                           # chunks follow video length only
-        self.assertEqual(p["options"]["granularity"], 10000)
+        self.assertEqual(p["options"]["granularity"], 2000)
 
         commit_pending()
         run.refresh_from_db()

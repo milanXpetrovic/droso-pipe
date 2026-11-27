@@ -23,5 +23,6 @@ command = ["python", 'C:\droso-pipe\tools\crop\crop.py']
 [tools."flytracker@1.0.0"]
 command = ["python", 'C:\droso-pipe\tools\flytracker\track.py',
            "--matlab", 'C:\Program Files\MATLAB\R2023b\bin\matlab.exe',
-           "--flytracker", 'C:\FlyTracker',
-           "--cores", "14"]                 # this machine's cores minus two; leave out for automatic
+           "--flytracker", 'C:\FlyTracker']
+# Cores are chosen per run: physical cores minus two, fewer if the free memory is not enough
+# (2.5 GB per core for 12 flies). Add "--cores", "N" to set a lower maximum.

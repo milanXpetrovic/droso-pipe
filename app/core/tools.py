@@ -23,6 +23,7 @@ FLYTRACKER = {"code": "flytracker", "version": "1.0.0",
                                    "A<nn>-feat": "flytracker_feat/1"}}}
 
 ENCODER = {"codec": "libx264", "crf": 18, "preset": "fast", "pix_fmt": "yuv420p"}
+FLYTRACKER_CHUNK_FRAMES = 2000     # frames per FlyTracker chunk (one parallel MATLAB worker each)
 CROP_MARGIN = 0.05                 # of the arena's width/height, on every side
 
 
@@ -63,7 +64,9 @@ def flytracker_params(run) -> dict:
     n_flies = sum(g.n_flies or 0 for g in arena.fly_groups.all()) or None
     # num_cores is the worker's business (its own machine); chunking follows video length only (granularity),
     # so the result does not depend on which worker tracked it.
-    options = {"granularity": 10000, "isdisplay": False,
+    # Each parallel MATLAB worker holds one chunk in memory while segmenting: 10000 frames of a 60 min video with
+    # 12 flies ran 14 workers out of 32 GB on Rig 1. With 2000 frames a worker peaks at 2.2 GB (measured).
+    options = {"granularity": FLYTRACKER_CHUNK_FRAMES, "isdisplay": False,
                "save_xls": False, "save_JAABA": False, "save_seg": False, "n_flies": n_flies,
                "min_fractional_arena_size": template.min_fractional_arena_size,
                "max_fractional_arena_size": template.max_fractional_arena_size}
